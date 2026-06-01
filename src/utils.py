@@ -1,4 +1,7 @@
 from collections import defaultdict
+from sentence_transformers import SentenceTransformer
+import pickle
+import os
 import torch
 import random
 import numpy as np
@@ -13,6 +16,20 @@ def set_seed(seed):
 
 def reconstruction_loss(x_pred, x_true):
         return ((x_pred - x_true)**2).mean(axis=-1)
+
+def get_item_embeddings(metadata):
+    if os.path.exists(os.path.join("embeddings", "embeddings.txt")):
+        with open(os.path.join("embeddings", "embeddings.txt"), "rb") as semid:
+            emb_dict = pickle.load(semid)
+        return emb_dict
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    item_ids = metadata['item_id'].tolist()
+    sequences = metadata['sequence'].tolist()
+    embeddings = model.encode(sequences, convert_to_tensor=True)
+    emb_dict = dict(zip(item_ids, embeddings))
+    with open(os.path.join("embeddings", "embeddings.txt"), "wb") as semid:
+        pickle.dump(emb_dict, semid)
+    return emb_dict
 
 def build_disambiguation(item_semantic_ids):
   """
