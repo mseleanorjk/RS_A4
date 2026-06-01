@@ -11,6 +11,9 @@ def set_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
+def reconstruction_loss(x_pred, x_true):
+        return ((x_pred - x_true)**2).mean(axis=-1)
+
 def build_disambiguation(item_semantic_ids):
   """
   Function to compute suffixes for different items with the same semantic ID.
