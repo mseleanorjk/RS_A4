@@ -62,6 +62,11 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, **kw
     # Print the utilisation stats
     utilisation = model.compute_codebook_util()
     kl = [util[0] for util in utilisation]
-    print([f"Codebook {i}: KL divergence = {kl}, utilised centroids = {centroids}" for i, (kl, centroids) in enumerate(utilisation, start = 1)])
-
     return avg_train_loss, avg_val_loss, kl
+
+EPOCHS=50
+optimizer = torch.optim.Adam(rqgat.parameters(), lr=RQVAE_LR)
+for epoch in range(EPOCHS):
+    train_loss, val_loss, kl = rqgat_epoch(rqgat, optimizer, train_rqgat_loader, val_rqgat_loader)
+    print(f"Epoch {epoch+1}/{EPOCHS} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+    print(*(f"Codebook {i}: KL divergence = {kl}" for i, kl in enumerate(kl, start=1)), sep=", ")
