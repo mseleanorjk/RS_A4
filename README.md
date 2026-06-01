@@ -1,2 +1,1 @@
-# RS_A4
-Recommender Systems assignment 4
+# Recommender Systems assignment 4 - Kaggle competition
