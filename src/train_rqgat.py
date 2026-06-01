@@ -7,6 +7,7 @@ from config import *
 from data_processor import DataProcessor
 from rqgat import RQGAT
 from snail import SNAIL
+from callbacks import EarlyStopping_RQGAT
 from datasets import *
 from utils import *
 
@@ -66,7 +67,14 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, **kw
 
 EPOCHS=50
 optimizer = torch.optim.Adam(rqgat.parameters(), lr=RQVAE_LR)
+early_stopping = EarlyStopping_RQGAT(patience=5, delta=0.01, warmup_epochs=10)
+
 for epoch in range(EPOCHS):
     train_loss, val_loss, kl = rqgat_epoch(rqgat, optimizer, train_rqgat_loader, val_rqgat_loader)
     print(f"Epoch {epoch+1}/{EPOCHS} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
     print(*(f"Codebook {i}: KL divergence = {kl}" for i, kl in enumerate(kl, start=1)), sep=", ")
+    should_stop = early_stopping.step(val_loss, epoch, rqgat)
+    if should_stop:
+        print(f"Early stopping at epoch {epoch+1}")
+        final_epoch = epoch+1
+        break
