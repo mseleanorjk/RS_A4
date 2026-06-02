@@ -127,6 +127,6 @@ plot_rqgat_training(train_losses, val_losses, train_recon_losses, val_recon_loss
 # Plot the centroids for the last epoch to visualise how the codebooks are distributed in the latent space
 plot_loader = DataLoader(val_rqgat_dataset, collate_fn=collate_fn, batch_size=len(val_rqgat_dataset), shuffle=False)
 for _, x, edge_index in plot_loader:
-        x = x.to(device)
-        edge_index = edge_index.to(device)
-        _, _, _, _, _ = rqgat(x, edge_index, plot=True)
+    x = x.to(device)
+    edge_index = edge_index.to(device)
+    _, _, _, _, _ = rqgat(x, edge_index, plot=True)
