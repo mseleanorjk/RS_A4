@@ -1,6 +1,5 @@
 import optuna
 import torch
-import os
 import time
 import numpy as np
 from torch.utils.data import DataLoader
@@ -8,9 +7,7 @@ from torch.utils.data import DataLoader
 from config import *
 from data_processor import DataProcessor
 from rqgat import RQGAT
-from train_rqgat import train_rqgat
-from snail import SNAIL
-from callbacks import EarlyStopping_RQGAT
+from train_rqgat import train_rqgat_model
 from datasets import *
 from utils import *
 
@@ -20,6 +17,7 @@ metadata = metadata_processor.add_sequence()
 item_ids, embeddings = get_item_embeddings(metadata)
 
 def objective(trial):
+    set_seed(42)
     # set hyperparams
     num_codebooks = trial.suggest_int("num_codebooks", 2, 6)
     centroids = trial.suggest_categorical("centroids", [2,4,8])
@@ -28,7 +26,7 @@ def objective(trial):
     weight_decay_rqgat = trial.suggest_float("weight_decay_rqgat", 1e-4, 1e-2, log=True)
     rqgat_hidden = trial.suggest_categorical("rqgat_hidden", [32, 64, 128])
     rqgat_batch_size = trial.suggest_categorical("rqgat_batch_size", [64, 128, 256])
-    rqgat_heads = trial.suggest_int("rqgat_heads", 1, 4)
+    rqgat_heads = trial.suggest_categorical("rqgat_heads", [1, 2, 4])
     gat_layers = trial.suggest_int("gat_layers", 1, 4)
     rqgat_dropout = trial.suggest_float("rqgat_dropout", 0.1, 0.5)
     entropy_weight = trial.suggest_float("entropy_weight", 0.01, 0.1)
@@ -51,7 +49,7 @@ def objective(trial):
     val_rqgat_loader = DataLoader(val_rqgat_dataset, collate_fn=collate_fn, batch_size=rqgat_batch_size, shuffle=False)
     optimizer = torch.optim.AdamW(rqgat.parameters(), lr=rqgat_lr, weight_decay=weight_decay_rqgat)
     
-    train_losses, val_losses, _, _, _, _, _, _, _, kl = train_rqgat(rqgat, optimizer, train_rqgat_loader, val_rqgat_loader, epochs=30, entropy_weight = entropy_weight, early_stop=None, scheduler=None, verbose=True)
+    train_losses, val_losses, _, _, _, _, _, _, _, kl = train_rqgat_model(rqgat, optimizer, train_rqgat_loader, val_rqgat_loader, epochs=30, entropy_weight = entropy_weight, early_stop=None, scheduler=None, verbose=False, save_checkpoints=False)
     avg_last_train_loss = np.mean(train_losses[-5:])
     trial.set_user_attr("avg_last_train_loss", avg_last_train_loss)
     avg_last_val_loss = np.mean(val_losses[-5:])
@@ -66,7 +64,7 @@ study = optuna.create_study(
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=10),
             load_if_exists=True
         )
-study.optimize(objective, n_trials=50)
+study.optimize(objective, n_trials=100)
 
 def save_to_csv(study, filename):
     df = study.trials_dataframe()
