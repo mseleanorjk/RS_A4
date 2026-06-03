@@ -126,7 +126,7 @@ def main():
     item_ids, embeddings = get_item_embeddings(metadata)
 
     rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32)
-    split = int(0.8 * len(item_ids))
+    split = int(SPLIT_PERC * len(item_ids))
     train_rqgat_dataset = RQGATDataset((item_ids[:split], embeddings[:split]))
     val_rqgat_dataset   = RQGATDataset((item_ids[split:], embeddings[split:]))
     train_rqgat_loader = DataLoader(train_rqgat_dataset, collate_fn=collate_fn, batch_size=RQGAT_BATCH_SIZE, shuffle=True)
