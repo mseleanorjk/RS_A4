@@ -74,7 +74,7 @@ def plot_rqgat_training(train_losses, val_losses, train_recon_losses, val_recon_
 
     fig.update_layout(title=go.layout.Title(text="Loss components per training epoch",
                                             font=go.layout.title.Font(size=30)),
-                    plot_bgcolor="white", height=700, width=1000, legend=dict(font=dict(size=17)))
+                    plot_bgcolor="white", height=700, width=1200, legend=dict(font=dict(size=17)))
     if save:
         fig.write_image("images/rqgat_losses.png")
     else:

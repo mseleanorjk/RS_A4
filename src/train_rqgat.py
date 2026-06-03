@@ -132,11 +132,6 @@ def main():
     train_rqgat_loader = DataLoader(train_rqgat_dataset, collate_fn=collate_fn, batch_size=RQGAT_BATCH_SIZE, shuffle=True)
     rqgat.rvq.initialize_codebooks(train_rqgat_loader, rqgat.encoder, device) # initialise the codebooks with kmeans before training
     val_rqgat_loader = DataLoader(val_rqgat_dataset, collate_fn=collate_fn, batch_size=RQGAT_BATCH_SIZE, shuffle=False)
-
-    print(f"Train items: {len(train_rqgat_dataset)}, Val items: {len(val_rqgat_dataset)}")
-    print(f"Embeddings mean: {embeddings.mean():.4f}, std: {embeddings.std():.4f}")
-    print(f"Embeddings min: {embeddings.min():.4f}, max: {embeddings.max():.4f}")
-
     optimizer = torch.optim.Adam(rqgat.parameters(), lr=RQGAT_LR)
     early_stopping = EarlyStopping_RQGAT(patience=5, delta=0.01, warmup_epochs=10)
 
