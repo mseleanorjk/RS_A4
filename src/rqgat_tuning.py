@@ -5,16 +5,12 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 from config import *
-from data_processor import DataProcessor
 from rqgat import RQGAT
 from train_rqgat import train_rqgat_model
 from datasets import *
 from utils import *
 
-metadata_processor = DataProcessor("item_meta.csv")
-metadata = metadata_processor.add_sequence()
-
-item_ids, embeddings = get_item_embeddings(metadata)
+item_ids, embeddings = get_item_embeddings()
 
 def objective(trial):
     set_seed(42)
@@ -57,10 +53,10 @@ def objective(trial):
         trial.set_user_attr(f"kl_{i}", kl_values[-1])
     
     del rqgat, optimizer, train_rqgat_loader, val_rqgat_loader
-    return avg_last_val_loss
+    return float(avg_last_val_loss)
 
 study = optuna.create_study(
-            storage=f'sqlite:///db.sqlite3',
+            storage='sqlite:///db.sqlite3',
             study_name=f"rqgat_experiment_{time.time()}",
             direction='minimize',
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=10),

@@ -9,6 +9,7 @@ import torch
 import random
 import numpy as np
 from config import *
+from data_processor import DataProcessor
 
 def set_seed(seed):
     random.seed(seed)
@@ -20,7 +21,7 @@ def set_seed(seed):
 def reconstruction_loss(x_pred, x_true):
     return ((x_pred - x_true)**2).mean(axis=-1)
 
-def get_item_embeddings(metadata):
+def get_item_embeddings():
     if os.path.exists(os.path.join("embeddings", "miniLM_embeddings.npz")):
         print(f'Loading cached embeddings from {os.path.join("embeddings", "miniLM_embeddings.npz")}')
         cached = np.load(os.path.join("embeddings", "miniLM_embeddings.npz"), allow_pickle=True)
@@ -28,6 +29,7 @@ def get_item_embeddings(metadata):
         embeddings = cached['embeddings'].astype(np.float32)
         print(f'Loaded {embeddings.shape[0]:,} embeddings of dim {embeddings.shape[1]}')
     else:
+        metadata = DataProcessor("item_meta.csv").add_sequence()
         model = SentenceTransformer('all-MiniLM-L6-v2')
         item_ids = metadata['item_id'].tolist()
         sequences = metadata['sequence'].tolist()
@@ -96,8 +98,8 @@ def plot_collisions(item_semantic_ids):
         suffixes.append(len(v)-1)
 
     fig = px.histogram(x=suffixes, color_discrete_sequence=['black'])
-    fig.update_xaxes(title_text=f"Number of items in the bucket (collisions)", gridcolor="white")
-    fig.update_yaxes(title_text=f"Buckets", gridcolor="lightgrey")
+    fig.update_xaxes(title_text="Number of items in the bucket (collisions)", gridcolor="white")
+    fig.update_yaxes(title_text="Buckets", gridcolor="lightgrey")
     fig.update_layout(plot_bgcolor="white", height=500, width=800, title=go.layout.Title(text="Distribution of collisions across buckets",
                                             font=go.layout.title.Font(size=20)))
     fig.show()

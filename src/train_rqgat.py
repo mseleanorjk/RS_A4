@@ -122,11 +122,8 @@ def main():
     os.makedirs("checkpoints", exist_ok=True)
     os.makedirs("embeddings", exist_ok=True)
     os.makedirs("images", exist_ok=True)
-    
-    metadata_processor = DataProcessor("item_meta.csv")
-    metadata = metadata_processor.add_sequence()
 
-    item_ids, embeddings = get_item_embeddings(metadata)
+    item_ids, embeddings = get_item_embeddings()
 
     rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32)
     split = int(SPLIT_PERC * len(item_ids))
