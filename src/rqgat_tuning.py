@@ -55,6 +55,8 @@ def objective(trial):
     avg_last_val_loss = np.mean(val_losses[-5:])
     for i, kl_values in kl.items():
         trial.set_user_attr(f"kl_{i}", kl_values[-1])
+    
+    del rqgat, optimizer, train_rqgat_loader, val_rqgat_loader
     return avg_last_val_loss
 
 study = optuna.create_study(
@@ -64,7 +66,7 @@ study = optuna.create_study(
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=10),
             load_if_exists=True
         )
-study.optimize(objective, n_trials=100)
+study.optimize(objective, n_trials=50)
 
 def save_to_csv(study, filename):
     df = study.trials_dataframe()
