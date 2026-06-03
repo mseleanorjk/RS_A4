@@ -80,7 +80,8 @@ class RQGAT(torch.nn.Module):
             probs = counts / (counts.sum() + 1e-10)
             entropy = -(probs * torch.log(probs + 1e-10)).sum()
             max_entropy = torch.log(torch.tensor(counts.size(0), dtype=torch.float, device=counts.device))
-            losses.append(max_entropy - entropy)  # 0 = perfectly uniform, maximised = collapsed
+            # Normalise by max entropy so collapse penalty is comparable across different codebook sizes.
+            losses.append((max_entropy - entropy) / (max_entropy + 1e-10))
         return torch.stack(losses).mean()
 
     def forward(self, x, edge_index, plot=False):
