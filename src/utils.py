@@ -1,4 +1,7 @@
 from collections import defaultdict
+from polars import groups
+import plotly.express as px
+import plotly.graph_objects as go
 from sentence_transformers import SentenceTransformer
 import pickle
 import os
@@ -80,3 +83,21 @@ def load_checkpoint(model, optimizer, path):
     model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     return checkpoint['epoch'], checkpoint['val_loss']
+
+def plot_collisions(item_semantic_ids):
+    groups = defaultdict(list)
+    for asin, codes in item_semantic_ids.items():
+        # for each code put in the bucket the item ids that have it
+        groups[tuple(codes)].append(asin)
+    collisions = 0
+    suffixes = []
+    for v in groups.values():
+        collisions += (len(v)-1)
+        suffixes.append(len(v)-1)
+
+    fig = px.histogram(x=suffixes, color_discrete_sequence=['black'])
+    fig.update_xaxes(title_text=f"Number of items in the bucket (collisions)", gridcolor="white")
+    fig.update_yaxes(title_text=f"Buckets", gridcolor="lightgrey")
+    fig.update_layout(plot_bgcolor="white", height=500, width=800, title=go.layout.Title(text="Distribution of collisions across buckets",
+                                            font=go.layout.title.Font(size=20)))
+    fig.show()
