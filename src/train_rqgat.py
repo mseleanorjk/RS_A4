@@ -118,9 +118,12 @@ def train_rqgat_model(model, optimizer, train_loader, val_loader, epochs=EPOCHS,
 
 
 def main():
-    train = DataProcessor("train.csv").df
+    # make sure the folders for checkpoints, embeddings and images exist
+    os.makedirs("checkpoints", exist_ok=True)
+    os.makedirs("embeddings", exist_ok=True)
+    os.makedirs("images", exist_ok=True)
+    
     metadata_processor = DataProcessor("item_meta.csv")
-    test = DataProcessor("test.csv").df
     metadata = metadata_processor.add_sequence()
 
     item_ids, embeddings = get_item_embeddings(metadata)
@@ -162,6 +165,7 @@ def main():
     plot_kl_divergence(kl, final_epoch=final_epoch)
 
     # Plot the centroids for the last epoch to visualise how the codebooks are distributed in the latent space
+    _, _ = load_checkpoint(rqgat, optimizer=optimizer, path="checkpoints/best_rqgat.pt")
     plot_loader = DataLoader(val_rqgat_dataset, collate_fn=collate_fn, batch_size=len(val_rqgat_dataset), shuffle=False)
     for _, x, edge_index in plot_loader:
         x = x.to(device)
