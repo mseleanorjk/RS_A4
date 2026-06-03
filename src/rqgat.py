@@ -53,9 +53,9 @@ class RQGAT(torch.nn.Module):
         self.count_list = [torch.zeros(centroids*2**c, device = device) for c in range(num_codebooks)]
 
     def reset_codebook_util(self):
-      # Call this at every epoch to reset the counts
-      for count_tensor in self.count_list:
-        count_tensor.zero_()
+        # Call this at every epoch to reset the counts
+        for count_tensor in self.count_list:
+            count_tensor.zero_()
 
     def compute_codebook_util(self):
         utilisation = []
