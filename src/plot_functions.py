@@ -3,7 +3,7 @@ import plotly.graph_objects as go
 
 from config import NUM_CODEBOOKS
 
-def plot_rqgat_training(train_losses, val_losses, train_recon_losses, val_recon_losses, train_rqvae_losses, val_rqvae_losses, train_entropy_losses, val_entropy_losses, final_epoch=50):
+def plot_rqgat_training(train_losses, val_losses, train_recon_losses, val_recon_losses, train_rqvae_losses, val_rqvae_losses, train_entropy_losses, val_entropy_losses, final_epoch=50, save=True):
     fig = make_subplots(
         rows=2, cols=3,
         specs=[
@@ -72,9 +72,12 @@ def plot_rqgat_training(train_losses, val_losses, train_recon_losses, val_recon_
     fig.update_layout(title=go.layout.Title(text="Loss components per training epoch",
                                             font=go.layout.title.Font(size=30)),
                     plot_bgcolor="white", height=700, width=1000, legend=dict(font=dict(size=17)))
-    fig.show()
+    if save:
+        fig.write_image("images/rqgat_losses.png")
+    else:
+        fig.show()
 
-def plot_kl_divergence(kl, final_epoch=50):
+def plot_kl_divergence(kl, final_epoch=50, save=True):
     fig = go.Figure()
     for i in range(NUM_CODEBOOKS):
         fig.add_trace(go.Scatter(x=[x for x in range(final_epoch)],
@@ -93,7 +96,10 @@ def plot_kl_divergence(kl, final_epoch=50):
                     plot_bgcolor="white", height=500, width=800, legend=dict(font=dict(size=13)))
     fig.update_yaxes(title_text="KL Divergence", gridcolor="lightgrey")
     fig.update_xaxes(title_text="Epoch")
-    fig.show()
+    if save:
+        fig.write_image("images/kl_divergence.png")
+    else:
+        fig.show()
 
 def plot_centroids(z, centroids, level, save_path=None):
     """
@@ -132,7 +138,6 @@ def plot_centroids(z, centroids, level, save_path=None):
     fig.update_layout(plot_bgcolor="white", height=1300, width=1500, 
                      title=go.layout.Title(text=title_text, font=go.layout.title.Font(size=30)), 
                      legend=dict(font=dict(size=20)))
-    
     if save_path:
         fig.write_image(save_path)
     else:
