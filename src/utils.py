@@ -1,7 +1,5 @@
 from collections import defaultdict
 from polars import groups
-import plotly.express as px
-import plotly.graph_objects as go
 from sentence_transformers import SentenceTransformer
 import pickle
 import os
@@ -86,7 +84,7 @@ def load_checkpoint(model, optimizer, path):
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     return checkpoint['epoch'], checkpoint['val_loss']
 
-def plot_collisions(item_semantic_ids):
+def collect_suffixes(item_semantic_ids, verbose=False):
     groups = defaultdict(list)
     for asin, codes in item_semantic_ids.items():
         # for each code put in the bucket the item ids that have it
@@ -96,10 +94,31 @@ def plot_collisions(item_semantic_ids):
     for v in groups.values():
         collisions += (len(v)-1)
         suffixes.append(len(v)-1)
+    if verbose:
+        print(f"Total collisions: {collisions}")
+    return suffixes
 
-    fig = px.histogram(x=suffixes, color_discrete_sequence=['black'])
-    fig.update_xaxes(title_text="Number of items in the bucket (collisions)", gridcolor="white")
-    fig.update_yaxes(title_text="Buckets", gridcolor="lightgrey")
-    fig.update_layout(plot_bgcolor="white", height=500, width=800, title=go.layout.Title(text="Distribution of collisions across buckets",
-                                            font=go.layout.title.Font(size=20)))
-    fig.show()
+def collect_semantic_ids(model, optimizer, dataloader, checkpoint_path="checkpoints/best_rqgat.pt", semid_path = "embeddings/item_semantic_ids.txt"):
+    # if already calculated, load the semantic ids, otherwise collect them using the rqvae
+    if os.path.exists(semid_path):
+        print("Found cached semantic IDs. Loading them...")
+        with open(semid_path, "rb") as semid:
+            item_semantic_ids = pickle.load(semid)
+    else:
+        print("Did not find cached semantic IDs. Collecting them...")
+        if os.path.exists(checkpoint_path):
+            load_checkpoint(model, optimizer, checkpoint_path)
+        else:
+            raise FileNotFoundError("No checkpoint for RQ-GAT model. Please train the model first.")
+        model.eval()
+        item_semantic_ids = {}
+        # collect semantic ids
+        with torch.no_grad():
+            for item_ids, x, edge_index in dataloader:
+                x = torch.nn.functional.normalize(x.to(device), dim=-1)
+                _, _, _, semantic_ids, _ = model(x, edge_index)  # (B, num_codebooks)
+                for item_id, codes in zip(item_ids, semantic_ids):
+                    item_semantic_ids[item_id] = tuple(codes.cpu().numpy())
+        with open(semid_path, "wb") as semid:
+            pickle.dump(item_semantic_ids, semid)
+    return item_semantic_ids
