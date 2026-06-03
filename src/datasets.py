@@ -1,11 +1,12 @@
 from torch.utils.data import Dataset
+import numpy as np
 import torch
 from rqgat import knn_graph
 
 def collate_fn(batch, k=10):
     item_ids, embeddings = zip(*batch)
     item_ids = torch.stack(item_ids) if torch.is_tensor(item_ids[0]) else list(item_ids)
-    x = torch.tensor(embeddings, dtype=torch.float32)   # [B, D]
+    x = torch.from_numpy(np.asarray(embeddings, dtype=np.float32))   # [B, D]
     B = x.size(0)
     k = min(k, B - 1)
     edge_index = knn_graph(x, k=k, cosine=True)

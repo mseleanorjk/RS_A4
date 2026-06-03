@@ -24,7 +24,7 @@ def knn_graph(x, k=10, cosine=True):
     return edge_index
 
 class RQGAT(torch.nn.Module):
-    def __init__(self, dim_in, dim_latent, num_codebooks=NUM_CODEBOOKS, centroids=CENTROIDS, hidden_size=RQVAE_HIDDEN, heads=RQGAT_HEADS, layers=GAT_LAYERS, dropout = RQGAT_DROPOUT):
+    def __init__(self, dim_in, dim_latent, num_codebooks=NUM_CODEBOOKS, centroids=CENTROIDS, hidden_size=RQGAT_HIDDEN, heads=RQGAT_HEADS, layers=GAT_LAYERS, dropout = RQGAT_DROPOUT, weight_commit=WEIGHT):
         super().__init__()
         self.encoder = GAT(
             in_channels=dim_in,
@@ -36,7 +36,7 @@ class RQGAT(torch.nn.Module):
             act='relu',
             norm='layer_norm',
         )
-        self.rvq = ResidualVectorQuantizer(dim_latent, centroids=centroids, num_codebooks=num_codebooks, weight = WEIGHT)
+        self.rvq = ResidualVectorQuantizer(dim_latent, centroids=centroids, num_codebooks=num_codebooks, weight = weight_commit)
         
         self.decoder = GAT(
             in_channels=dim_latent,
@@ -80,7 +80,8 @@ class RQGAT(torch.nn.Module):
             probs = counts / (counts.sum() + 1e-10)
             entropy = -(probs * torch.log(probs + 1e-10)).sum()
             max_entropy = torch.log(torch.tensor(counts.size(0), dtype=torch.float, device=counts.device))
-            losses.append(max_entropy - entropy)  # 0 = perfectly uniform, maximised = collapsed
+            # Normalise by max entropy so collapse penalty is comparable across different codebook sizes.
+            losses.append((max_entropy - entropy) / (max_entropy + 1e-10))
         return torch.stack(losses).mean()
 
     def forward(self, x, edge_index, plot=False):

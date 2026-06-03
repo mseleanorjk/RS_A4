@@ -20,6 +20,7 @@ class ResidualVectorQuantizer(torch.nn.Module):
         super(ResidualVectorQuantizer, self).__init__()
         self.weight = weight
         self.codebooks = torch.nn.ModuleList()
+        self.num_codebooks = num_codebooks
 
         self.codebooks = torch.nn.ModuleList([
             CodeBook(centroids=centroids*2**c, embedding_dim=dim_in)
@@ -84,4 +85,4 @@ class ResidualVectorQuantizer(torch.nn.Module):
             residual = residual - closest_centroids
 
         semantic_ids = torch.stack(all_indices, dim=1)
-        return semantic_ids, residual, rvq_loss
+        return semantic_ids, residual, rvq_loss/self.num_codebooks
