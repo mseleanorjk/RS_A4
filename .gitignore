@@ -220,4 +220,5 @@ __marimo__/
 data/
 images/
 embeddings/
+tuning/
 checkpoints/

@@ -2,6 +2,7 @@ from collections import defaultdict
 from polars import groups
 from sentence_transformers import SentenceTransformer
 import pickle
+import faiss
 import os
 import torch
 import random
@@ -35,6 +36,57 @@ def get_item_embeddings():
         embeddings = embeddings.astype(np.float32)
         np.savez_compressed(os.path.join("embeddings", "miniLM_embeddings.npz"), item_ids=item_ids, embeddings=embeddings)
     return item_ids, embeddings
+
+def knn_graph(x, k=10, cosine=True):
+    """Build a KNN graph to add graph edge indices to the data in preparation for the GAT"""
+    if cosine:
+        x_norm = torch.nn.functional.normalize(x, dim=-1)
+        sim = x_norm @ x_norm.T
+        # negative because the max the similarity the smaller the distance between the nodes
+        dists = -sim
+    else:
+        dists = torch.cdist(x, x)
+    # Exclude self-connections between nodes by setting diagonal to infinity
+    dists.fill_diagonal_(float('inf'))
+    # Get k nearest neighbours for each node
+    _, nn_idx = dists.topk(k, dim=1, largest=False)
+    # Build edge_index
+    B = x.size(0)
+    source = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, k).reshape(-1)
+    destination = nn_idx.reshape(-1)
+    edge_index = torch.stack([source, destination], dim=0)
+    return edge_index
+
+def faiss_graph(embeddings, k=10):
+    """Approximate KNN for saving memory. Does not materialise the full matrix
+
+    Args:
+        embeddings (list): The item embeddings from the pre-trained transformer
+        k (int, optional): The number of nearest neighbors to consider. Defaults to 10.
+
+    Returns:
+        torch.Tensor: The edge index tensor representing the KNN graph.
+    """
+    embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+    index = faiss.IndexFlatIP(embeddings.shape[1])
+    index.add(embeddings)
+    _, nn_idx = index.search(embeddings, k + 1)  # +1 because self is included
+    nn_idx = nn_idx[:, 1:]  # remove self
+    
+    n = embeddings.shape[0]
+    source = np.repeat(np.arange(n), k)
+    destination = nn_idx.reshape(-1)
+    edge_index = torch.tensor(np.stack([source, destination]), dtype=torch.long)
+    return edge_index
+
+def build_graph(embeddings, k=10, use_faiss=False, cosine=True):
+    """Build a KNN graph to add graph edge indices to the data in preparation for the GAT"""
+    x = torch.from_numpy(embeddings).float()
+    if use_faiss:
+        edge_index = faiss_graph(embeddings, k=k)
+    else:
+        edge_index = knn_graph(x, k=k, cosine=cosine)
+    return edge_index
 
 def build_disambiguation(item_semantic_ids):
     """

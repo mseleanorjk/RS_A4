@@ -1,3 +1,5 @@
+from json import encoder
+
 import torch
 import numpy as np
 from sklearn.cluster import KMeans
@@ -31,32 +33,21 @@ class ResidualVectorQuantizer(torch.nn.Module):
     # so all embeddings were mapped to one centroid. This function initialises
     # the codebooks so that the centroids are distributed more closely to the
     # embeddings to avoid collapse
-    def initialize_codebooks(self, dataloader, encoder, device, n_batches=10):
+    def initialize_codebooks(self, x, edge_index, encoder, device):
         encoder.eval()
-        vectors = []
-        # Collect a few batches of embeddings passed through the encoder
         with torch.no_grad():
-            for i, (_, x, edge_index) in enumerate(dataloader):
-                if i >= n_batches:
-                    break
-                z = encoder(x.to(device), edge_index.to(device))
-                vectors.append(z.cpu())
-        vectors = np.concatenate(vectors, axis=0)  # (N, dim)
+            z = encoder(x.to(device), edge_index.to(device))
+        vectors = z.cpu().numpy()
         residual = vectors.copy()
 
         for codebook in self.codebooks:
-          # kmeans clustering for qweight initalisation
-            kmeans = KMeans(n_clusters=codebook.centroids, n_init=10, random_state=42) #type: ignore
+            kmeans = KMeans(n_clusters=codebook.centroids, n_init=10, random_state=42)
             kmeans.fit(residual)
 
-            # Initialize codebook weights with cluster centers
             centers = torch.tensor(kmeans.cluster_centers_, dtype=torch.float32).to(device)
-            codebook.layer.weight.data = centers # type: ignore
+            codebook.layer.weight.data = centers
 
-            # each subsequent codebook fits kmeans with the residuals from the last (mirroring rvq)
-            # Predict the closest centroid via k-means
             closest = kmeans.predict(residual)
-            # Update the residuals for each run such that they are the previous residuals - the closest centroid at this iteration
             residual = residual - kmeans.cluster_centers_[closest]
 
     def forward(self, x, plot=False):
