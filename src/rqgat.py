@@ -3,26 +3,6 @@ import torch
 from rvq import ResidualVectorQuantizer
 from config import *
 
-def knn_graph(x, k=10, cosine=True):
-    """Build a KNN graph to add graph edge indices to the data in preparation for the GAT"""
-    if cosine:
-        x_norm = torch.nn.functional.normalize(x, dim=-1)
-        sim = x_norm @ x_norm.T
-        # negative because the max the similarity the smaller the distance between the nodes
-        dists = -sim
-    else:
-        dists = torch.cdist(x, x)
-    # Exclude self-connections between nodes by setting diagonal to infinity
-    dists.fill_diagonal_(float('inf'))
-    # Get k nearest neighbours for each node
-    _, nn_idx = dists.topk(k, dim=1, largest=False)
-    # Build edge_index
-    B = x.size(0)
-    source = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, k).reshape(-1)
-    destination = nn_idx.reshape(-1)
-    edge_index = torch.stack([source, destination], dim=0)
-    return edge_index
-
 class RQGAT(torch.nn.Module):
     def __init__(self, dim_in, dim_latent, num_codebooks=NUM_CODEBOOKS, centroids=CENTROIDS, hidden_size=RQGAT_HIDDEN, heads=RQGAT_HEADS, layers=GAT_LAYERS, dropout = RQGAT_DROPOUT, weight_commit=WEIGHT):
         super().__init__()

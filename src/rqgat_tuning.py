@@ -21,12 +21,19 @@ def objective(trial):
     weight_commit = trial.suggest_float("weight", 0.1, 0.9)
     weight_decay_rqgat = trial.suggest_float("weight_decay_rqgat", 1e-4, 1e-2, log=True)
     rqgat_hidden = trial.suggest_categorical("rqgat_hidden", [32, 64, 128])
-    rqgat_batch_size = trial.suggest_categorical("rqgat_batch_size", [64, 128, 256])
+    #rqgat_batch_size = trial.suggest_categorical("rqgat_batch_size", [64, 128, 256])
     rqgat_heads = trial.suggest_categorical("rqgat_heads", [1, 2, 4])
     gat_layers = trial.suggest_int("gat_layers", 1, 4)
     rqgat_dropout = trial.suggest_float("rqgat_dropout", 0.1, 0.5)
     entropy_weight = trial.suggest_float("entropy_weight", 0.01, 0.1)
     split_perc = trial.suggest_float("split_perc", 0.7, 0.9)
+    
+    rqgat_dataset = RQGATDataset(item_ids, embeddings, split=split_perc, k=10)
+    x, edge_index, train_mask, val_mask = rqgat_dataset.get_full_data()
+    x = x.to(device)
+    edge_index = edge_index.to(device)
+    train_mask = train_mask.to(device)
+    val_mask = val_mask.to(device)
     
     rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32, 
                   num_codebooks=num_codebooks, 
@@ -36,23 +43,20 @@ def objective(trial):
                   layers=gat_layers, 
                   dropout = rqgat_dropout, 
                   weight_commit=weight_commit)
-
-    split = int(split_perc * len(item_ids))
-    train_rqgat_dataset = RQGATDataset((item_ids[:split], embeddings[:split]))
-    val_rqgat_dataset   = RQGATDataset((item_ids[split:], embeddings[split:]))
-    train_rqgat_loader = DataLoader(train_rqgat_dataset, collate_fn=collate_fn, batch_size=rqgat_batch_size, shuffle=True)
-    rqgat.rvq.initialize_codebooks(train_rqgat_loader, rqgat.encoder, device) # initialise the codebooks with kmeans before training
-    val_rqgat_loader = DataLoader(val_rqgat_dataset, collate_fn=collate_fn, batch_size=rqgat_batch_size, shuffle=False)
+    rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device)
     optimizer = torch.optim.AdamW(rqgat.parameters(), lr=rqgat_lr, weight_decay=weight_decay_rqgat)
     
-    train_losses, val_losses, _, _, _, _, _, _, _, kl = train_rqgat_model(rqgat, optimizer, train_rqgat_loader, val_rqgat_loader, epochs=30, entropy_weight = entropy_weight, early_stop=None, scheduler=None, verbose=False, save_checkpoints=False)
+    train_losses, val_losses, _, _, _, _, _, _, _, kl = train_rqgat_model(rqgat, optimizer, x, edge_index, train_mask, val_mask, epochs=30, entropy_weight = entropy_weight, early_stop=None, scheduler=None, verbose=False, save_checkpoints=False)
     avg_last_train_loss = np.mean(train_losses[-5:])
     trial.set_user_attr("avg_last_train_loss", avg_last_train_loss)
     avg_last_val_loss = np.mean(val_losses[-5:])
     for i, kl_values in kl.items():
         trial.set_user_attr(f"kl_{i}", kl_values[-1])
     
-    del rqgat, optimizer, train_rqgat_loader, val_rqgat_loader
+    del rqgat, optimizer, train_losses, val_losses, kl
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     return float(avg_last_val_loss)
 
 study = optuna.create_study(
