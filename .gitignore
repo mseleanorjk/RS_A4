@@ -222,3 +222,4 @@ images/
 embeddings/
 tuning/
 checkpoints/
+prova*.py
