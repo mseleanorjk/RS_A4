@@ -1,6 +1,4 @@
 from collections import defaultdict
-from polars import groups
-from sentence_transformers import SentenceTransformer
 import pickle
 import faiss
 import os
@@ -9,6 +7,7 @@ import random
 import numpy as np
 from config import *
 from data_processor import DataProcessor
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 def set_seed(seed):
     random.seed(seed)
@@ -20,21 +19,29 @@ def set_seed(seed):
 def reconstruction_loss(x_pred, x_true):
     return ((x_pred - x_true)**2).mean(axis=-1)
 
-def get_item_embeddings():
-    if os.path.exists(os.path.join("embeddings", "miniLM_embeddings.npz")):
-        print(f'Loading cached embeddings from {os.path.join("embeddings", "miniLM_embeddings.npz")}')
-        cached = np.load(os.path.join("embeddings", "miniLM_embeddings.npz"), allow_pickle=True)
+def get_item_embeddings(metadata=None):
+    if os.path.exists(os.path.join("embeddings", "tf_idf_embeddings.npz")):
+        print(f'Loading cached embeddings from {os.path.join("embeddings", "tf_idf_embeddings.npz")}')
+        cached = np.load(os.path.join("embeddings", "tf_idf_embeddings.npz"), allow_pickle=True)
         item_ids = cached['item_ids']
         embeddings = cached['embeddings'].astype(np.float32)
         print(f'Loaded {embeddings.shape[0]:,} embeddings of dim {embeddings.shape[1]}')
     else:
-        metadata = DataProcessor("item_meta.csv").add_sequence()
-        model = SentenceTransformer('all-MiniLM-L6-v2')
         item_ids = metadata['item_id'].tolist()
         sequences = metadata['sequence'].tolist()
-        embeddings = model.encode(sequences, convert_to_numpy=True)
+        tfidf = TfidfVectorizer(
+            max_features=4096, # much richer vocabulary
+            stop_words='english',
+            sublinear_tf=True, # log-scale TF, helps with long descriptions
+            min_df=2, # ignore terms appearing in only 1 item (likely noise)
+            max_df=0.95, # ignore terms appearing in 95%+ of items (too generic)
+        )
+        embeddings = tfidf.fit_transform(sequences).toarray()
         embeddings = embeddings.astype(np.float32)
-        np.savez_compressed(os.path.join("embeddings", "miniLM_embeddings.npz"), item_ids=item_ids, embeddings=embeddings)
+        print("Obtained TF-IDF embeddings with:")
+        print(f"Shape: {embeddings.shape}")
+        print(f"Sparsity: {(embeddings == 0).mean():.2%}")  
+        np.savez_compressed(os.path.join("embeddings", "tf_idf_embeddings.npz"), item_ids=item_ids, embeddings=embeddings)
     return item_ids, embeddings
 
 def knn_graph(x, k=10, cosine=True):
@@ -79,13 +86,46 @@ def faiss_graph(embeddings, k=10):
     edge_index = torch.tensor(np.stack([source, destination]), dtype=torch.long)
     return edge_index
 
-def build_graph(embeddings, k=10, use_faiss=False, cosine=True):
-    """Build a KNN graph to add graph edge indices to the data in preparation for the GAT"""
-    x = torch.from_numpy(embeddings).float()
-    if use_faiss:
-        edge_index = faiss_graph(embeddings, k=k)
-    else:
-        edge_index = knn_graph(x, k=k, cosine=cosine)
+def build_graph(metadata, embeddings, use_faiss = False, k=K, k_split = K_SPLIT):
+    """
+    Build graph using (pseudo-)KNN globally for half of the k and within category for the other half.
+
+    Args:
+        metadata ([pd.DataFrame]): The metadata dataframe containing item information.
+        embeddings (np.ndarray): The item embeddings.
+        use_faiss (bool, optional): Whether to use FAISS for approximate KNN. Defaults to False.
+        k (int, optional): The number of nearest neighbors to consider. Defaults to 10.
+        sim_threshold (float, optional): The similarity threshold for edge creation. Defaults to 0.3.
+
+    Returns:
+        torch.Tensor: The edge index tensor representing the KNN graph.
+    """
+    metadata = metadata.reset_index(drop=True)  # Ensure indices are sequential for proper mapping
+    embeddings_tensor = torch.tensor(embeddings).float()
+    
+    # Global KNN — captures cross-category similarity
+    global_edges = knn_graph(embeddings_tensor, k=k//k_split) if not use_faiss else faiss_graph(embeddings_tensor, k=k//k_split)
+    
+    # Category KNN — ensures within-category structure
+    category_edges = []
+    for _, group in metadata.groupby('main_category'):
+        idx = group.index.tolist()
+        if len(idx) < 2:
+            continue
+        cat_emb = embeddings_tensor[idx]
+        local_k = min(k//k_split, len(idx) - 1)
+        local_edges = knn_graph(cat_emb, k=local_k) if not use_faiss else faiss_graph(cat_emb, k=local_k)
+        # Remap local indices back to global indices
+        global_src = torch.tensor(idx)[local_edges[0]]
+        global_dst = torch.tensor(idx)[local_edges[1]]
+        category_edges.append(torch.stack([global_src, global_dst]))
+    
+    category_edges = torch.cat(category_edges, dim=1)
+    
+    # Combine and deduplicate
+    edge_index = torch.cat([global_edges, category_edges], dim=1)
+    edge_index = torch.unique(edge_index, dim=1)
+    
     return edge_index
 
 def build_disambiguation(item_semantic_ids):
