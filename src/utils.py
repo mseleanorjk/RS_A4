@@ -86,9 +86,9 @@ def load_checkpoint(model, optimizer, path):
 
 def collect_suffixes(item_semantic_ids, verbose=False):
     groups = defaultdict(list)
-    for asin, codes in item_semantic_ids.items():
+    for item_id, codes in item_semantic_ids.items():
         # for each code put in the bucket the item ids that have it
-        groups[tuple(codes)].append(asin)
+        groups[tuple(codes)].append(item_id)
     collisions = 0
     suffixes = []
     for v in groups.values():
@@ -96,7 +96,7 @@ def collect_suffixes(item_semantic_ids, verbose=False):
         suffixes.append(len(v)-1)
     if verbose:
         print(f"Total collisions: {collisions}")
-    return suffixes
+    return suffixes, collisions
 
 def collect_semantic_ids(model, optimizer, dataloader, checkpoint_path="checkpoints/best_rqgat.pt", semid_path = "embeddings/item_semantic_ids.txt"):
     # if already calculated, load the semantic ids, otherwise collect them using the rqvae

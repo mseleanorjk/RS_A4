@@ -146,12 +146,16 @@ def plot_centroids(z, centroids, level, save_path=None):
     else:
         fig.show()
 
-def plot_collisions(suffixes, save=True):
+def plot_collisions(suffixes, collisions, save=True):
     fig = px.histogram(x=suffixes, color_discrete_sequence=['black'])
     fig.update_xaxes(title_text="Number of items in the bucket (collisions)", gridcolor="white")
     fig.update_yaxes(title_text="Buckets", gridcolor="lightgrey")
     fig.update_layout(plot_bgcolor="white", height=500, width=800, title=go.layout.Title(text="Distribution of collisions across buckets",
                                             font=go.layout.title.Font(size=20)))
+    fig.add_annotation(x=15, y=4500,
+            text=f"Total collisions: {collisions}",
+            showarrow=False,
+            xshift=0, yshift=0)
     if save:
         fig.write_image("images/collisions.png")
     else:
