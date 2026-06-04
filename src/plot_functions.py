@@ -1,5 +1,8 @@
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+from collections import defaultdict
+import plotly.express as px
+import plotly.graph_objects as go
 
 from config import NUM_CODEBOOKS
 
@@ -71,7 +74,7 @@ def plot_rqgat_training(train_losses, val_losses, train_recon_losses, val_recon_
 
     fig.update_layout(title=go.layout.Title(text="Loss components per training epoch",
                                             font=go.layout.title.Font(size=30)),
-                    plot_bgcolor="white", height=700, width=1000, legend=dict(font=dict(size=17)))
+                    plot_bgcolor="white", height=700, width=1200, legend=dict(font=dict(size=17)))
     if save:
         fig.write_image("images/rqgat_losses.png")
     else:
@@ -140,5 +143,20 @@ def plot_centroids(z, centroids, level, save_path=None):
                      legend=dict(font=dict(size=20)))
     if save_path:
         fig.write_image(save_path)
+    else:
+        fig.show()
+
+def plot_collisions(suffixes, collisions, save=True):
+    fig = px.histogram(x=suffixes, color_discrete_sequence=['black'])
+    fig.update_xaxes(title_text="Number of items in the bucket (collisions)", gridcolor="white")
+    fig.update_yaxes(title_text="Buckets", gridcolor="lightgrey")
+    fig.update_layout(plot_bgcolor="white", height=500, width=800, title=go.layout.Title(text="Distribution of collisions across buckets",
+                                            font=go.layout.title.Font(size=20)))
+    fig.add_annotation(x=15, y=4500,
+            text=f"Total collisions: {collisions}",
+            showarrow=False,
+            xshift=0, yshift=0)
+    if save:
+        fig.write_image("images/collisions.png")
     else:
         fig.show()
