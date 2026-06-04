@@ -106,8 +106,9 @@ def main():
     os.makedirs("images", exist_ok=True)
 
     # use new dataset structure to create all nodes t the same time instead of batched
-    item_ids, embeddings = get_item_embeddings()
-    rqgat_dataset = RQGATDataset(item_ids, embeddings, k=10)
+    metadata = DataProcessor("item_meta.csv").add_sequence()
+    item_ids, embeddings = get_item_embeddings(metadata)
+    rqgat_dataset = RQGATDataset(metadata, item_ids, embeddings, split=SPLIT_PERC, k=K, k_split=K_SPLIT)
     x, edge_index, train_mask, val_mask = rqgat_dataset.get_full_data()
     x=x.to(device)
     edge_index = edge_index.to(device)
