@@ -1,5 +1,4 @@
 import pandas as pd
-import os
 
 from config import *
   
@@ -19,20 +18,26 @@ class DataProcessor:
             print(f"File not found: {self.name}")
             return pd.DataFrame()
     
-    def add_embeddings(self, embeddings):
-        # Join the data and metadata on the parent_asin column
-        joined_df = pd.merge(self.df, embeddings, on="item_id", how="left")
-        return joined_df
+    def add_price_bin(self):
+        def bin_within_category(group):
+            try:
+                group['price_label'] = pd.qcut(
+                    group['price'], 
+                    q=3, 
+                    labels=['low', 'medium', 'high']
+                )
+            except ValueError:
+                # Too few unique values in this category to bin
+                group['price_label'] = 'medium'
+            return group
+        
+        self.df = self.df.groupby('main_category', group_keys=False).apply(bin_within_category)
+        return self.df
 
     def add_sequence(self):
-      self.df["sequence"] = (
-          self.df["main_category"].astype(str) +
-          self.df["title"].astype(str) +
-          self.df["features"].astype(str) +
-          self.df["price"].astype(str)+
-          self.df["store"].astype(str) +
-          self.df["description"].astype(str) +
-          self.df["categories"].astype(str)
-      )
-      return self.df
+        self.df = self.add_price_bin()
+        text_fields = ["main_category", "title", "features", 
+                   "description", "categories", "price_label"]
+        self.df["sequence"] = self.df[text_fields].fillna('').agg(' '.join, axis=1)
+        return self.df
 
