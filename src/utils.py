@@ -1,12 +1,10 @@
 from collections import defaultdict
 import pickle
-import faiss
 import os
 import torch
 import random
 import numpy as np
 from config import *
-from data_processor import DataProcessor
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 def set_seed(seed):
