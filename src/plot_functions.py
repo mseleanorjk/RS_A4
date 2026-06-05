@@ -3,6 +3,7 @@ import plotly.graph_objects as go
 from collections import defaultdict
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 
 from config import NUM_CODEBOOKS
 
@@ -152,11 +153,29 @@ def plot_collisions(suffixes, collisions, save=True):
     fig.update_yaxes(title_text="Buckets", gridcolor="lightgrey")
     fig.update_layout(plot_bgcolor="white", height=500, width=800, title=go.layout.Title(text="Distribution of collisions across buckets",
                                             font=go.layout.title.Font(size=20)))
-    fig.add_annotation(x=15, y=4500,
+    fig.add_annotation(x=15, y=4200,
             text=f"Total collisions: {collisions}",
             showarrow=False,
             xshift=0, yshift=0)
     if save:
         fig.write_image("images/collisions.png")
+    else:
+        fig.show()
+
+def plot_descriptives(purchases, users, save=True):
+    fig = px.histogram(x=purchases, color_discrete_sequence=['black'])
+    fig.update_xaxes(title_text="Purchases", gridcolor="white", showline=True, linewidth=1, linecolor='black', tickvals=[t for t in range(0, max(purchases), 10)])
+    fig.update_yaxes(title_text="Users", gridcolor="lightgrey")
+    fig.update_layout(plot_bgcolor="white", height=500, width=800, title=go.layout.Title(text="Histogram of user purchases history length",
+                                            font=go.layout.title.Font(size=20)))
+    fig.add_vline(np.mean(purchases), line_dash="dash", line_color="red",
+                annotation_text=f"Average purchases: {np.mean(purchases):.2f}", annotation_position="top right", annotation_font_color="red",
+                annotation_xshift=10, annotation_yshift=-30)
+    fig.add_annotation(x=110, y=5500,
+            text=f"Total users: {users}",
+            showarrow=False,
+            xshift=0, yshift=0)
+    if save:
+        fig.write_image("images/descriptive.png")
     else:
         fig.show()
