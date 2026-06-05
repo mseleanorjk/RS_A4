@@ -2,23 +2,14 @@ import optuna
 import torch
 import time
 import numpy as np
+import gc
 
 from config import *
 from rqgat import RQGAT
 from train_rqgat import train_rqgat_model
+from data_processor import DataProcessor
 from datasets import *
 from utils import *
-
-metadata = DataProcessor("item_meta.csv").add_sequence()
-item_ids, embeddings = get_item_embeddings(metadata)
-
-graph_cache = {}
-
-def get_graph(k, k_split):
-    key = (k, k_split)
-    if key not in graph_cache:
-        graph_cache[key] = build_graph(metadata, embeddings, k=k, k_split=k_split)
-    return graph_cache[key]
 
 def objective(trial):
     set_seed(42)
@@ -29,36 +20,32 @@ def objective(trial):
     weight_commit = trial.suggest_float("weight", 0.1, 0.9)
     weight_decay_rqgat = trial.suggest_float("weight_decay_rqgat", 1e-4, 1e-2, log=True)
     rqgat_hidden = trial.suggest_categorical("rqgat_hidden", [32, 64, 128])
-    k = trial.suggest_int("k", 5, 20)
-    k_split = trial.suggest_int("k_split", 1, 4)
+    #k = trial.suggest_int("k", 5, 20)
     rqgat_heads = trial.suggest_categorical("rqgat_heads", [1, 2, 4])
     gat_layers = trial.suggest_int("gat_layers", 1, 4)
     rqgat_dropout = trial.suggest_float("rqgat_dropout", 0.1, 0.5)
     entropy_weight = trial.suggest_float("entropy_weight", 0.01, 0.1)
     split_perc = trial.suggest_float("split_perc", 0.7, 0.9)
     
-    #rqgat_dataset = RQGATDataset(metadata, item_ids, embeddings, split=split_perc, k=k, k_split=k_split)
-    #x, edge_index, train_mask, val_mask = rqgat_dataset.get_full_data()
-    edge_index = get_graph(k, k_split)
     n = len(item_ids)
     split = int(split_perc * n)
     train_mask = torch.zeros(n, dtype=torch.bool)
     train_mask[:split] = True
     val_mask = ~train_mask
     x = torch.from_numpy(embeddings).float()
-    edge_index = edge_index.to(device)
+    #edge_index = edge_index.to(device)
     train_mask = train_mask.to(device)
     val_mask = val_mask.to(device)
     
     rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32, 
-                  num_codebooks=num_codebooks, 
-                  centroids=centroids, 
-                  hidden_size=rqgat_hidden, 
-                  heads=rqgat_heads, 
-                  layers=gat_layers, 
-                  dropout = rqgat_dropout, 
-                  weight_commit=weight_commit)
-    rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device)
+                    num_codebooks=num_codebooks, 
+                    centroids=centroids, 
+                    hidden_size=rqgat_hidden, 
+                    heads=rqgat_heads, 
+                    layers=gat_layers, 
+                    dropout = rqgat_dropout, 
+                    weight_commit=weight_commit).to(device)
+    #rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device)
     optimizer = torch.optim.AdamW(rqgat.parameters(), lr=rqgat_lr, weight_decay=weight_decay_rqgat)
     
     train_losses, val_losses, _, _, _, _, _, _, _, kl = train_rqgat_model(rqgat, optimizer, x, edge_index, train_mask, val_mask, epochs=30, entropy_weight = entropy_weight, early_stop=None, scheduler=None, verbose=False, save_checkpoints=False)
@@ -69,6 +56,7 @@ def objective(trial):
         trial.set_user_attr(f"kl_{i}", kl_values[-1])
     
     del rqgat, optimizer, train_losses, val_losses, kl
+    gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
@@ -81,7 +69,15 @@ study = optuna.create_study(
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=10),
             load_if_exists=True
         )
-study.optimize(objective, n_trials=50)
+
+print("Adding data and building edges...")
+metadata = DataProcessor("item_meta.csv").add_sequence()
+item_ids, embeddings = get_item_embeddings(metadata)
+train = DataProcessor("train.csv").df
+edge_index = build_graph(train, item_ids).to(device)
+
+print("Starting Optuna trials...")
+study.optimize(objective, n_trials=50, n_jobs=-1)
 
 def save_to_csv(study, filename):
     df = study.trials_dataframe()

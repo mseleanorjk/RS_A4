@@ -6,6 +6,7 @@ from config import *
 from rqgat import RQGAT
 from snail import SNAIL
 from callbacks import EarlyStopping_RQGAT
+from data_processor import DataProcessor
 from datasets import *
 from utils import *
 from plot_functions import plot_rqgat_training, plot_kl_divergence
@@ -108,14 +109,16 @@ def main():
     # use new dataset structure to create all nodes t the same time instead of batched
     metadata = DataProcessor("item_meta.csv").add_sequence()
     item_ids, embeddings = get_item_embeddings(metadata)
-    rqgat_dataset = RQGATDataset(metadata, item_ids, embeddings, split=SPLIT_PERC, k=K, k_split=K_SPLIT)
+    train = DataProcessor("train.csv").df
+    edge_index = build_graph(train, item_ids)
+    rqgat_dataset = RQGATDataset(edge_index, item_ids, embeddings, split=SPLIT_PERC, k=K)
     x, edge_index, train_mask, val_mask = rqgat_dataset.get_full_data()
     x=x.to(device)
     edge_index = edge_index.to(device)
     train_mask = train_mask.to(device)
     val_mask = val_mask.to(device)
     
-    rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32)
+    rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32).to(device)
     #rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device) # initialise the codebooks with kmeans before training
     optimizer = torch.optim.AdamW(rqgat.parameters(), lr=RQGAT_LR, weight_decay=WEIGHT_DECAY_RQGAT)
     early_stopping = EarlyStopping_RQGAT(patience=5, delta=0.0001, warmup_epochs=10)
