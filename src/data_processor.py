@@ -38,6 +38,6 @@ class DataProcessor:
         self.df = self.add_price_bin()
         text_fields = ["main_category", "title", "features", 
                    "description", "categories", "price_label"]
-        self.df["sequence"] = self.df[text_fields].fillna('').agg(' '.join, axis=1)
+        self.df["sequence"] = self.df[text_fields].fillna('').agg(' '.join, axis=1) #type: ignore
         return self.df
 
