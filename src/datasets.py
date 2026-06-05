@@ -4,16 +4,15 @@ from utils import build_graph
 from config import *
 
 class RQGATDataset(Dataset):
-    def __init__(self, metadata, item_ids, embeddings, split=SPLIT_PERC, k=K, k_split=K_SPLIT):
+    def __init__(self, edge_index, item_ids, embeddings, split=SPLIT_PERC, k=K):
         super().__init__()
         self.item_ids = item_ids
         self.x = torch.from_numpy(embeddings).float()
-        self.metadata = metadata
+        self.edge_index = edge_index
         self.k = k
-        self.k_split = k_split
         
         # Build graph over ALL items
-        self.edge_index = build_graph(metadata, embeddings, use_faiss = False, k=k, k_split = k_split)
+        #self.edge_index = build_graph(self.metadata, embeddings, k=k)
         
         # Create masks
         n = len(item_ids)
@@ -25,6 +24,9 @@ class RQGATDataset(Dataset):
 
     def __len__(self):
         return len(self.item_ids)
+    
+    def __getitem__(self, idx):
+        return self.item_ids[idx], self.x[idx], self.edge_index
     
     def get_full_data(self):
         return self.x, self.edge_index, self.train_mask, self.val_mask

@@ -27,8 +27,8 @@ def get_item_embeddings(metadata=None):
         embeddings = cached['embeddings'].astype(np.float32)
         print(f'Loaded {embeddings.shape[0]:,} embeddings of dim {embeddings.shape[1]}')
     else:
-        item_ids = metadata['item_id'].tolist()
-        sequences = metadata['sequence'].tolist()
+        item_ids = metadata['item_id'].tolist() #type: ignore
+        sequences = metadata['sequence'].tolist() #type: ignore
         tfidf = TfidfVectorizer(
             max_features=4096, # much richer vocabulary
             stop_words='english',
@@ -36,7 +36,7 @@ def get_item_embeddings(metadata=None):
             min_df=2, # ignore terms appearing in only 1 item (likely noise)
             max_df=0.95, # ignore terms appearing in 95%+ of items (too generic)
         )
-        embeddings = tfidf.fit_transform(sequences).toarray()
+        embeddings = tfidf.fit_transform(sequences).toarray() #type:ignore
         embeddings = embeddings.astype(np.float32)
         print("Obtained TF-IDF embeddings with:")
         print(f"Shape: {embeddings.shape}")
@@ -44,88 +44,45 @@ def get_item_embeddings(metadata=None):
         np.savez_compressed(os.path.join("embeddings", "tf_idf_embeddings.npz"), item_ids=item_ids, embeddings=embeddings)
     return item_ids, embeddings
 
-def knn_graph(x, k=10, cosine=True):
-    """Build a KNN graph to add graph edge indices to the data in preparation for the GAT"""
-    if cosine:
-        x_norm = torch.nn.functional.normalize(x, dim=-1)
-        sim = x_norm @ x_norm.T
-        # negative because the max the similarity the smaller the distance between the nodes
-        dists = -sim
-    else:
-        dists = torch.cdist(x, x)
-    # Exclude self-connections between nodes by setting diagonal to infinity
-    dists.fill_diagonal_(float('inf'))
-    # Get k nearest neighbours for each node
-    _, nn_idx = dists.topk(k, dim=1, largest=False)
-    # Build edge_index
-    B = x.size(0)
-    source = torch.arange(B, device=x.device).unsqueeze(1).expand(-1, k).reshape(-1)
-    destination = nn_idx.reshape(-1)
-    edge_index = torch.stack([source, destination], dim=0)
-    return edge_index
-
-def faiss_graph(embeddings, k=10):
-    """Approximate KNN for saving memory. Does not materialise the full matrix
+def build_graph(data, item_ids, k=K, w=W):
+    """
+    Build graph edges using user sequences. Each node (item) is connected to the 
+    top k items that are most bought with it within a window of w items in the user sequences. 
+    This captures co-purchase patterns.
 
     Args:
-        embeddings (list): The item embeddings from the pre-trained transformer
+        data (pd.DataFrame): The user-item interaction data.
+        item_ids (list): The list of item IDs.
         k (int, optional): The number of nearest neighbors to consider. Defaults to 10.
-
+        w (int, optional): The window size for co-occurrence. Defaults to 10.
     Returns:
-        torch.Tensor: The edge index tensor representing the KNN graph.
+        torch.Tensor: The edge index tensor representing the copurchase graph.
     """
-    embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
-    index = faiss.IndexFlatIP(embeddings.shape[1])
-    index.add(embeddings)
-    _, nn_idx = index.search(embeddings, k + 1)  # +1 because self is included
-    nn_idx = nn_idx[:, 1:]  # remove self
+    item_to_idx = {item: idx for idx, item in enumerate(item_ids)}
     
-    n = embeddings.shape[0]
-    source = np.repeat(np.arange(n), k)
-    destination = nn_idx.reshape(-1)
-    edge_index = torch.tensor(np.stack([source, destination]), dtype=torch.long)
-    return edge_index
-
-def build_graph(metadata, embeddings, use_faiss = False, k=K, k_split = K_SPLIT):
-    """
-    Build graph using (pseudo-)KNN globally for half of the k and within category for the other half.
-
-    Args:
-        metadata ([pd.DataFrame]): The metadata dataframe containing item information.
-        embeddings (np.ndarray): The item embeddings.
-        use_faiss (bool, optional): Whether to use FAISS for approximate KNN. Defaults to False.
-        k (int, optional): The number of nearest neighbors to consider. Defaults to 10.
-        sim_threshold (float, optional): The similarity threshold for edge creation. Defaults to 0.3.
-
-    Returns:
-        torch.Tensor: The edge index tensor representing the KNN graph.
-    """
-    metadata = metadata.reset_index(drop=True)  # Ensure indices are sequential for proper mapping
-    embeddings_tensor = torch.tensor(embeddings).float()
+    co_counts = defaultdict(int)
+    for _, group in data.groupby('user_id')['item_id']:
+        items = group.tolist()
+        for i, item_i in enumerate(items):
+            for j in range(i+1, min(i+w, len(items))):
+                a = item_to_idx.get(item_i)
+                b = item_to_idx.get(items[j])
+                if a is not None and b is not None:
+                    co_counts[(a, b)] += 1
+                    co_counts[(b, a)] += 1
     
-    # Global KNN — captures cross-category similarity
-    global_edges = knn_graph(embeddings_tensor, k=k//k_split) if not use_faiss else faiss_graph(embeddings_tensor, k=k//k_split)
+    neighbours = defaultdict(list)
+    for (a, b), count in co_counts.items():
+        neighbours[a].append((b, count))
     
-    # Category KNN — ensures within-category structure
-    category_edges = []
-    for _, group in metadata.groupby('main_category'):
-        idx = group.index.tolist()
-        if len(idx) < 2:
-            continue
-        cat_emb = embeddings_tensor[idx]
-        local_k = min(k//k_split, len(idx) - 1)
-        local_edges = knn_graph(cat_emb, k=local_k) if not use_faiss else faiss_graph(cat_emb, k=local_k)
-        # Remap local indices back to global indices
-        global_src = torch.tensor(idx)[local_edges[0]]
-        global_dst = torch.tensor(idx)[local_edges[1]]
-        category_edges.append(torch.stack([global_src, global_dst]))
+    src, dst = [], []
+    for item, nbrs in neighbours.items():
+        top_k = sorted(nbrs, key=lambda x: -x[1])[:k]
+        for nbr, _ in top_k:
+            src.append(item)
+            dst.append(nbr)
     
-    category_edges = torch.cat(category_edges, dim=1)
-    
-    # Combine and deduplicate
-    edge_index = torch.cat([global_edges, category_edges], dim=1)
-    edge_index = torch.unique(edge_index, dim=1)
-    
+    edge_index = torch.tensor([src, dst], dtype=torch.long)
     return edge_index
 
 def build_disambiguation(item_semantic_ids):
@@ -190,7 +147,7 @@ def collect_suffixes(item_semantic_ids, verbose=False):
         print(f"Total collisions: {collisions}")
     return suffixes, collisions
 
-def collect_semantic_ids(model, optimizer, dataloader, checkpoint_path="checkpoints/best_rqgat.pt", semid_path = "embeddings/item_semantic_ids.txt"):
+def collect_semantic_ids(model, optimizer, dataset, checkpoint_path="checkpoints/best_rqgat.pt", semid_path = "embeddings/item_semantic_ids.txt"):
     # if already calculated, load the semantic ids, otherwise collect them using the rqvae
     if os.path.exists(semid_path):
         print("Found cached semantic IDs. Loading them...")
@@ -206,7 +163,7 @@ def collect_semantic_ids(model, optimizer, dataloader, checkpoint_path="checkpoi
         item_semantic_ids = {}
         # collect semantic ids
         with torch.no_grad():
-            for item_ids, x, edge_index in dataloader:
+            for item_ids, x, edge_index in dataset:
                 x = torch.nn.functional.normalize(x.to(device), dim=-1)
                 _, _, _, semantic_ids, _ = model(x, edge_index)  # (B, num_codebooks)
                 for item_id, codes in zip(item_ids, semantic_ids):
