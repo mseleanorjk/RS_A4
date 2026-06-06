@@ -70,7 +70,7 @@ train = DataProcessor("train.csv").df
 edge_index = build_graph(train, item_ids).to(device)
 
 print("Starting Optuna trials...")
-study.optimize(objective, n_trials=50, n_jobs=-1)
+study.optimize(objective, n_trials=50, n_jobs=1)
 
 def save_to_csv(study, filename):
     df = study.trials_dataframe()

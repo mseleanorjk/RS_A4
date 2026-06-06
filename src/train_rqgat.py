@@ -17,14 +17,14 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot
     # Training
     model.train()
     model.reset_codebook_util()
-    recon_l = 0.0
-    rqvae_l = 0.0
-    entropy_l = 0.0
+    train_recon_l = 0.0
+    train_rqvae_l = 0.0
+    train_entropy_l = 0.0
     train_loss = 0.0
+    val_recon_l = 0.0
+    val_rqvae_l = 0.0
+    val_entropy_l = 0.0
     val_loss = 0.0
-    recon_l_val = 0.0
-    rqvae_l_val = 0.0
-    entropy_l_val = 0.0
 
     for _, x_sub, sub_edge_index, mapping, _ in train_loader:
         x_sub = x_sub.to(device)
@@ -32,13 +32,19 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot
         
         x_hat, _, _, _, rvq_loss = model(x_sub, sub_edge_index, plot=plot)
 
-        recon_l = reconstruction_loss(x_hat[mapping], x_sub[mapping]).mean()
-        rqvae_l += rvq_loss
-        entropy_l += model.codebook_entropy_loss()
-        train_loss += recon_l + rqvae_l + entropy_weight * entropy_l
+        recon_l_train = reconstruction_loss(x_hat[mapping], x_sub[mapping]).mean()
+        rvq_loss_train_item = rvq_loss.item()
+        entropy_l_train = model.codebook_entropy_loss()
+        loss = recon_l_train.item() + rvq_loss + entropy_weight * entropy_l_train
+        loss_train = recon_l_train.item() + rvq_loss_train_item + entropy_weight * entropy_l_train.item()
+
+        train_recon_l += recon_l_train.item()
+        train_rqvae_l += rvq_loss_train_item
+        train_entropy_l += entropy_l_train.item()
+        train_loss += loss_train
 
         optimizer.zero_grad()
-        train_loss.backward()
+        loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
 
@@ -52,10 +58,15 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot
             
             x_hat_val, _, _, _, rvq_loss_val = model(x_sub, sub_edge_index)
 
-            recon_l_val += reconstruction_loss(x_hat_val[mapping], x_sub[mapping]).mean()
-            rqvae_l_val += rvq_loss_val
-            entropy_l_val += model.codebook_entropy_loss()
-            val_loss += recon_l_val + rqvae_l_val + entropy_weight * entropy_l_val
+            recon_l_val = reconstruction_loss(x_hat_val[mapping], x_sub[mapping]).mean()
+            rvq_loss_val_item = rvq_loss_val.item()
+            entropy_l_val_item = model.codebook_entropy_loss().item()
+            loss_val = recon_l_val.item() + rvq_loss_val_item + entropy_weight * entropy_l_val_item
+
+            val_recon_l += recon_l_val.item()
+            val_rqvae_l += rvq_loss_val_item
+            val_entropy_l += entropy_l_val_item
+            val_loss += loss_val
 
     if scheduler:
         scheduler.step(val_loss)
@@ -65,8 +76,8 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot
     n_train = len(train_loader)
     n_val = len(val_loader)
     return (
-        train_loss/n_train, rqvae_l/n_train, recon_l/n_train, entropy_l/n_train,
-        val_loss/n_val, rqvae_l_val/n_val, recon_l_val/n_val, entropy_l_val/n_val,
+        train_loss/n_train, train_rqvae_l/n_train, train_recon_l/n_train, train_entropy_l/n_train,
+        val_loss/n_val, val_rqvae_l/n_val, val_recon_l/n_val, val_entropy_l/n_val,
         utilisation
     )
 
