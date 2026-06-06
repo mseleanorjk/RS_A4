@@ -1,6 +1,7 @@
 from collections import defaultdict
 import pickle
 import os
+from torch_geometric.loader import NeighborLoader
 import torch
 import random
 import numpy as np
@@ -145,7 +146,7 @@ def collect_suffixes(item_semantic_ids, verbose=False):
         print(f"Total collisions: {collisions}")
     return suffixes, collisions
 
-def collect_semantic_ids(model, optimizer, dataset, checkpoint_path="checkpoints/best_rqgat.pt", semid_path = "embeddings/item_semantic_ids.txt"):
+def collect_semantic_ids(model, optimizer, loader, checkpoint_path="checkpoints/best_rqgat.pt", semid_path = "embeddings/item_semantic_ids.txt"):
     # if already calculated, load the semantic ids, otherwise collect them using the rqvae
     if os.path.exists(semid_path):
         print("Found cached semantic IDs. Loading them...")
@@ -157,14 +158,14 @@ def collect_semantic_ids(model, optimizer, dataset, checkpoint_path="checkpoints
             load_checkpoint(model, optimizer, checkpoint_path)
         else:
             raise FileNotFoundError("No checkpoint for RQ-GAT model. Please train the model first.")
-        model.eval()
-        item_semantic_ids = {}
-        # collect semantic ids
         with torch.no_grad():
-            for item_ids, x, edge_index in dataset:
-                x = torch.nn.functional.normalize(x.to(device), dim=-1)
-                _, _, _, semantic_ids, _ = model(x, edge_index)  # (B, num_codebooks)
-                for item_id, codes in zip(item_ids, semantic_ids):
+            item_semantic_ids = {}
+            for item_ids_sub, x_sub, sub_edge_index, mapping, _ in loader:
+                x_sub = x_sub.to(device)
+                sub_edge_index = sub_edge_index.to(device)
+                _, _, _, semantic_ids, _ = model(x_sub, sub_edge_index)
+                seed_codes = semantic_ids[mapping]
+                for item_id, codes in zip(item_ids_sub[mapping.numpy()], seed_codes):
                     item_semantic_ids[item_id] = tuple(codes.cpu().numpy())
         with open(semid_path, "wb") as semid:
             pickle.dump(item_semantic_ids, semid)

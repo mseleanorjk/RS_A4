@@ -20,22 +20,15 @@ def objective(trial):
     weight_commit = trial.suggest_float("weight", 0.1, 0.9)
     weight_decay_rqgat = trial.suggest_float("weight_decay_rqgat", 1e-4, 1e-2, log=True)
     rqgat_hidden = trial.suggest_categorical("rqgat_hidden", [32, 64, 128])
-    #k = trial.suggest_int("k", 5, 20)
+    batch_size = trial.suggest_categorical("batch_size", [64, 128, 256])
     rqgat_heads = trial.suggest_categorical("rqgat_heads", [1, 2, 4])
     gat_layers = trial.suggest_int("gat_layers", 1, 4)
     rqgat_dropout = trial.suggest_float("rqgat_dropout", 0.1, 0.5)
     entropy_weight = trial.suggest_float("entropy_weight", 0.01, 0.1)
     split_perc = trial.suggest_float("split_perc", 0.7, 0.9)
     
-    n = len(item_ids)
-    split = int(split_perc * n)
-    train_mask = torch.zeros(n, dtype=torch.bool)
-    train_mask[:split] = True
-    val_mask = ~train_mask
-    x = torch.from_numpy(embeddings).float()
-    #edge_index = edge_index.to(device)
-    train_mask = train_mask.to(device)
-    val_mask = val_mask.to(device)
+    data = get_data(embeddings, edge_index, item_ids, split=split_perc)
+    train_loader, val_loader = get_loaders(data, batch_size=batch_size)
     
     rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32, 
                     num_codebooks=num_codebooks, 
@@ -48,14 +41,14 @@ def objective(trial):
     #rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device)
     optimizer = torch.optim.AdamW(rqgat.parameters(), lr=rqgat_lr, weight_decay=weight_decay_rqgat)
     
-    train_losses, val_losses, _, _, _, _, _, _, _, kl = train_rqgat_model(rqgat, optimizer, x, edge_index, train_mask, val_mask, epochs=30, entropy_weight = entropy_weight, early_stop=None, scheduler=None, verbose=False, save_checkpoints=False)
+    train_losses, val_losses, _, _, _, _, _, _, _, kl = train_rqgat_model(rqgat, optimizer, train_loader, val_loader, epochs=30, entropy_weight = entropy_weight, early_stop=None, scheduler=None, verbose=False, save_checkpoints=False)
     avg_last_train_loss = np.mean(train_losses[-5:])
     trial.set_user_attr("avg_last_train_loss", avg_last_train_loss)
     avg_last_val_loss = np.mean(val_losses[-5:])
     for i, kl_values in kl.items():
         trial.set_user_attr(f"kl_{i}", kl_values[-1])
     
-    del rqgat, optimizer, train_losses, val_losses, kl
+    del rqgat, optimizer, train_losses, val_losses, kl, data, train_loader, val_loader
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -77,7 +70,7 @@ train = DataProcessor("train.csv").df
 edge_index = build_graph(train, item_ids).to(device)
 
 print("Starting Optuna trials...")
-study.optimize(objective, n_trials=50, n_jobs=-1)
+study.optimize(objective, n_trials=50, n_jobs=1)
 
 def save_to_csv(study, filename):
     df = study.trials_dataframe()

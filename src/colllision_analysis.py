@@ -10,9 +10,10 @@ from datasets import *
 item_ids, embeddings = get_item_embeddings()
 train = DataProcessor("train.csv").df
 edge_index = build_graph(train, item_ids)
-rqgat_dataset = RQGATDataset(edge_index, item_ids, embeddings, split=SPLIT_PERC)
+data = get_data(embeddings, edge_index, item_ids)
+train_loader, _ = get_loaders(data, batch_size=data.num_nodes)
 rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32)
 optimizer = torch.optim.AdamW(rqgat.parameters(), lr=RQGAT_LR)
-item_semantic_ids = collect_semantic_ids(rqgat, optimizer, rqgat_dataset)
+item_semantic_ids = collect_semantic_ids(rqgat, optimizer, train_loader)
 suffixes, collisions = collect_suffixes(item_semantic_ids, verbose=True)
 plot_collisions(suffixes, collisions, save=True)

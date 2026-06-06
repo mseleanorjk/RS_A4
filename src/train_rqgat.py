@@ -13,59 +13,83 @@ from plot_functions import plot_rqgat_training, plot_kl_divergence
 
 set_seed(42)
 
-def rqgat_epoch(model, optimizer, x, edge_index, train_mask, val_mask, scheduler=None, plot=False, entropy_weight=ENTROPY_WEIGHT):
+def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot=False, entropy_weight=ENTROPY_WEIGHT):
     # Training
-    x = x.to(device)
-    edge_index = edge_index.to(device)
-    train_mask = train_mask.to(device)
-    val_mask = val_mask.to(device)
-    
     model.train()
     model.reset_codebook_util()
+    train_recon_l = 0.0
+    train_rqvae_l = 0.0
+    train_entropy_l = 0.0
+    train_loss = 0.0
+    val_recon_l = 0.0
+    val_rqvae_l = 0.0
+    val_entropy_l = 0.0
+    val_loss = 0.0
 
-    x_hat, _, _, _, rvq_loss = model(x, edge_index, plot=plot)
-    # use train and val masks to compute the losses only on the respective splits
-    recon_l = reconstruction_loss(x_hat[train_mask], x[train_mask]).mean()
-    rqvae_l = rvq_loss
-    entropy_l = model.codebook_entropy_loss()
-    train_loss = recon_l + rqvae_l + entropy_weight * entropy_l
+    for _, x_sub, sub_edge_index, mapping, _ in train_loader:
+        x_sub = x_sub.to(device)
+        sub_edge_index = sub_edge_index.to(device)
+        
+        x_hat, _, _, _, rvq_loss = model(x_sub, sub_edge_index, plot=plot)
 
-    optimizer.zero_grad()
-    train_loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-    optimizer.step()
+        recon_l_train = reconstruction_loss(x_hat[mapping], x_sub[mapping]).mean()
+        rvq_loss_train_item = rvq_loss.item()
+        entropy_l_train = model.codebook_entropy_loss()
+        loss = recon_l_train.item() + rvq_loss + entropy_weight * entropy_l_train
+        loss_train = recon_l_train.item() + rvq_loss_train_item + entropy_weight * entropy_l_train.item()
+
+        train_recon_l += recon_l_train.item()
+        train_rqvae_l += rvq_loss_train_item
+        train_entropy_l += entropy_l_train.item()
+        train_loss += loss_train
+
+        optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        optimizer.step()
 
     # Validation
     model.eval()
 
     with torch.no_grad():
-        x_hat_val, _, _, _, rvq_loss_val = model(x, edge_index)
-        
-        recon_l_val = reconstruction_loss(x_hat_val[val_mask], x[val_mask]).mean()
-        rqvae_l_val = rvq_loss_val
-        entropy_l_val = model.codebook_entropy_loss()
-        val_loss = recon_l_val + rqvae_l_val + entropy_weight * entropy_l_val
+        for _, x_sub, sub_edge_index, mapping, _ in val_loader:
+            x_sub = x_sub.to(device)
+            sub_edge_index = sub_edge_index.to(device)
+            
+            x_hat_val, _, _, _, rvq_loss_val = model(x_sub, sub_edge_index)
+
+            recon_l_val = reconstruction_loss(x_hat_val[mapping], x_sub[mapping]).mean()
+            rvq_loss_val_item = rvq_loss_val.item()
+            entropy_l_val_item = model.codebook_entropy_loss().item()
+            loss_val = recon_l_val.item() + rvq_loss_val_item + entropy_weight * entropy_l_val_item
+
+            val_recon_l += recon_l_val.item()
+            val_rqvae_l += rvq_loss_val_item
+            val_entropy_l += entropy_l_val_item
+            val_loss += loss_val
 
     if scheduler:
         scheduler.step(val_loss)
 
     # Print the utilisation stats
     utilisation = model.compute_codebook_util()
+    n_train = len(train_loader)
+    n_val = len(val_loader)
     return (
-        train_loss.item(), rqvae_l.item(), recon_l.item(), entropy_l.item(),
-        val_loss.item(), rqvae_l_val.item(), recon_l_val.item(), entropy_l_val.item(),
+        train_loss/n_train, train_rqvae_l/n_train, train_recon_l/n_train, train_entropy_l/n_train,
+        val_loss/n_val, val_rqvae_l/n_val, val_recon_l/n_val, val_entropy_l/n_val,
         utilisation
     )
 
 EPOCHS=50
 
-def train_rqgat_model(model, optimizer, x, edge_index, train_mask, val_mask, epochs=EPOCHS, entropy_weight = ENTROPY_WEIGHT, early_stop=None, scheduler=None, verbose=True, save_checkpoints=True):
+def train_rqgat_model(model, optimizer, train_loader, val_loader, epochs=EPOCHS, entropy_weight = ENTROPY_WEIGHT, early_stop=None, scheduler=None, verbose=True, save_checkpoints=True):
     final_epoch = epochs
     best_val_loss = float('inf')
     kl = defaultdict(list)
     train_losses, val_losses, train_recon_losses, val_recon_losses, train_rqvae_losses, val_rqvae_losses, train_entropy_losses, val_entropy_losses = [], [], [], [], [], [], [], []
     for epoch in range(epochs):
-        train_loss, train_rqvae_l, train_recon_l, train_entropy_l, val_loss, val_rqvae_l, val_recon_l, val_entropy_l, utilisation = rqgat_epoch(model, optimizer, x, edge_index, train_mask, val_mask, entropy_weight=entropy_weight, scheduler=scheduler)
+        train_loss, train_rqvae_l, train_recon_l, train_entropy_l, val_loss, val_rqvae_l, val_recon_l, val_entropy_l, utilisation = rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=scheduler, entropy_weight=entropy_weight)
         
         train_recon_losses.append(train_recon_l)
         train_rqvae_losses.append(train_rqvae_l)
@@ -111,12 +135,8 @@ def main():
     item_ids, embeddings = get_item_embeddings(metadata)
     train = DataProcessor("train.csv").df
     edge_index = build_graph(train, item_ids)
-    rqgat_dataset = RQGATDataset(edge_index, item_ids, embeddings, split=SPLIT_PERC, k=K)
-    x, edge_index, train_mask, val_mask = rqgat_dataset.get_full_data()
-    x=x.to(device)
-    edge_index = edge_index.to(device)
-    train_mask = train_mask.to(device)
-    val_mask = val_mask.to(device)
+    data = get_data(embeddings, edge_index, item_ids)
+    train_loader, val_loader = get_loaders(data)
     
     rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32).to(device)
     #rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device) # initialise the codebooks with kmeans before training
@@ -126,10 +146,8 @@ def main():
     train_losses, val_losses, train_recon_losses, val_recon_losses, train_rqvae_losses, val_rqvae_losses, train_entropy_losses, val_entropy_losses, final_epoch, kl = train_rqgat_model(
         rqgat,
         optimizer,
-        x,
-        edge_index,
-        train_mask,
-        val_mask,
+        train_loader,
+        val_loader,
         early_stop=early_stopping,
     )
 
@@ -148,8 +166,12 @@ def main():
 
     # Plot the centroids for the last epoch to visualise how the codebooks are distributed in the latent space
     _, _ = load_checkpoint(rqgat, optimizer=optimizer, path="checkpoints/best_rqgat.pt")
+    plot_loader, _ = get_loaders(data, batch_size=data.num_nodes)  # type: ignore
     with torch.no_grad():
-        _, _, _, _, _ = rqgat(x, edge_index, plot=True)
+        for _, x_sub, sub_edge_index, _, _ in plot_loader:
+            x_sub = x_sub.to(device)
+            sub_edge_index = sub_edge_index.to(device)
+            _, _, _, _, _ = rqgat(x_sub, sub_edge_index, plot=True)
 
 
 if __name__ == "__main__":
