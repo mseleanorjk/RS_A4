@@ -26,7 +26,7 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot
     rqvae_l_val = 0.0
     entropy_l_val = 0.0
 
-    for x_sub, sub_edge_index, mapping, _ in train_loader:
+    for _, x_sub, sub_edge_index, mapping, _ in train_loader:
         x_sub = x_sub.to(device)
         sub_edge_index = sub_edge_index.to(device)
         
@@ -46,7 +46,7 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot
     model.eval()
 
     with torch.no_grad():
-        for x_sub, sub_edge_index, mapping, _ in val_loader:
+        for _, x_sub, sub_edge_index, mapping, _ in val_loader:
             x_sub = x_sub.to(device)
             sub_edge_index = sub_edge_index.to(device)
             
@@ -157,7 +157,7 @@ def main():
     _, _ = load_checkpoint(rqgat, optimizer=optimizer, path="checkpoints/best_rqgat.pt")
     plot_loader, _ = get_loaders(data, batch_size=data.num_nodes)  # type: ignore
     with torch.no_grad():
-        for x_sub, sub_edge_index, _, _ in plot_loader:
+        for _, x_sub, sub_edge_index, _, _ in plot_loader:
             x_sub = x_sub.to(device)
             sub_edge_index = sub_edge_index.to(device)
             _, _, _, _, _ = rqgat(x_sub, sub_edge_index, plot=True)
