@@ -3,7 +3,7 @@ from torch_geometric.loader import NeighborLoader
 import torch
 from config import *
 
-def get_data(embeddings, edge_index, split=SPLIT_PERC):
+def get_data(embeddings, edge_index, item_ids, split=SPLIT_PERC):
     x = torch.from_numpy(embeddings).float()
     n = len(embeddings)
     split_n = int(split * n)
@@ -12,7 +12,7 @@ def get_data(embeddings, edge_index, split=SPLIT_PERC):
     train_mask[:split_n] = True
     val_mask = ~train_mask
 
-    data = Data(x=x, edge_index=edge_index, train_mask=train_mask, val_mask=val_mask)
+    data = Data(x=x, edge_index=edge_index, train_mask=train_mask, val_mask=val_mask, item_ids=item_ids)
     return data
 
 def get_loaders(data, batch_size=RQGAT_BATCH_SIZE, num_neighbours=K):
