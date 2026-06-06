@@ -26,12 +26,13 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot
     rqvae_l_val = 0.0
     entropy_l_val = 0.0
 
-    for batch in train_loader:  
-        batch = batch.to(device)
-        x, edge_index = batch.x, batch.edge_index
-        x_hat, _, _, _, rvq_loss = model(x, edge_index, plot=plot)
-    # use train and val masks to compute the losses only on the respective splits
-        recon_l += reconstruction_loss(x_hat[:batch.batch_size], batch.x[:batch.batch_size]).mean()
+    for x_sub, sub_edge_index, mapping, _ in train_loader:
+        x_sub = x_sub.to(device)
+        sub_edge_index = sub_edge_index.to(device)
+        
+        x_hat, _, _, _, rvq_loss = model(x_sub, sub_edge_index, plot=plot)
+
+        recon_l = reconstruction_loss(x_hat[mapping], x_sub[mapping]).mean()
         rqvae_l += rvq_loss
         entropy_l += model.codebook_entropy_loss()
         train_loss += recon_l + rqvae_l + entropy_weight * entropy_l
@@ -45,12 +46,13 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot
     model.eval()
 
     with torch.no_grad():
-        for batch in val_loader:
-            batch = batch.to(device)
-            x, edge_index = batch.x, batch.edge_index
-            x_hat_val, _, _, _, rvq_loss_val = model(x, edge_index)
+        for x_sub, sub_edge_index, mapping, _ in val_loader:
+            x_sub = x_sub.to(device)
+            sub_edge_index = sub_edge_index.to(device)
             
-            recon_l_val += reconstruction_loss(x_hat_val[:batch.batch_size], x[:batch.batch_size]).mean()
+            x_hat_val, _, _, _, rvq_loss_val = model(x_sub, sub_edge_index)
+
+            recon_l_val += reconstruction_loss(x_hat_val[mapping], x_sub[mapping]).mean()
             rqvae_l_val += rvq_loss_val
             entropy_l_val += model.codebook_entropy_loss()
             val_loss += recon_l_val + rqvae_l_val + entropy_weight * entropy_l_val
@@ -155,10 +157,10 @@ def main():
     _, _ = load_checkpoint(rqgat, optimizer=optimizer, path="checkpoints/best_rqgat.pt")
     plot_loader, _ = get_loaders(data, batch_size=data.num_nodes)  # type: ignore
     with torch.no_grad():
-        for batch in plot_loader:
-            batch = batch.to(device)
-            x, edge_index = batch.x, batch.edge_index
-            _, _, _, _, _ = rqgat(x, edge_index, plot=True)
+        for x_sub, sub_edge_index, _, _ in plot_loader:
+            x_sub = x_sub.to(device)
+            sub_edge_index = sub_edge_index.to(device)
+            _, _, _, _, _ = rqgat(x_sub, sub_edge_index, plot=True)
 
 
 if __name__ == "__main__":
