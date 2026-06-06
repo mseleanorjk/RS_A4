@@ -1,6 +1,7 @@
 from torch_geometric.data import Data
 from torch_geometric.utils import k_hop_subgraph
 import torch
+import numpy as np
 from config import *
 
 def get_data(embeddings, edge_index, item_ids, split=SPLIT_PERC):
@@ -11,6 +12,7 @@ def get_data(embeddings, edge_index, item_ids, split=SPLIT_PERC):
     train_mask = torch.zeros(n, dtype=torch.bool)
     train_mask[:split_n] = True
     val_mask = ~train_mask
+    item_ids=np.array(item_ids)
 
     data = Data(x=x, edge_index=edge_index, train_mask=train_mask, val_mask=val_mask, item_ids=item_ids)
     return data
@@ -43,7 +45,7 @@ class SubgraphLoader:
             node_idx, sub_edge_index, mapping, _ = k_hop_subgraph(
                 seed_nodes, num_hops=1, edge_index=self.data.edge_index, relabel_nodes=True
             )
-            yield self.data.x[node_idx], sub_edge_index, mapping, seed_nodes
+            yield self.data.item_ids[node_idx.numpy()], self.data.x[node_idx], sub_edge_index, mapping, seed_nodes
     
     def __len__(self):
         return len(self.loader)
