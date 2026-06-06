@@ -122,7 +122,7 @@ def main():
     item_ids, embeddings = get_item_embeddings(metadata)
     train = DataProcessor("train.csv").df
     edge_index = build_graph(train, item_ids)
-    data = get_data(embeddings, edge_index)
+    data = get_data(embeddings, edge_index, item_ids)
     train_loader, val_loader = get_loaders(data)
     
     rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32).to(device)
