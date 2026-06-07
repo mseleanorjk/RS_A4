@@ -41,10 +41,10 @@ def get_loaders(data, batch_size=RQGAT_BATCH_SIZE):
     return train_loader, val_loader
 
 class BPRDataset(Dataset):
-    def __init__(self, data, user_to_idx, item_to_idx, num_items):
+    def __init__(self, data, user_to_idx, item_to_idx):
         self.user_to_idx = user_to_idx
         self.item_to_idx = item_to_idx
-        self.num_items = num_items
+        self.num_items = len(item_to_idx)
         
         # Build user positive items lookup for negative sampling
         self.user_pos_items = {}
