@@ -23,13 +23,14 @@ class LightGCNConv(MessagePassing):
 
 
 class LightGCN(nn.Module):
-    def __init__(self, num_users, num_items, dim=DIM, n_layers=LAYERS, gamma=GAMMA):
+    def __init__(self, num_users, num_items, dim=DIM, n_layers=LAYERS, gamma=GAMMA, reg_weight=REG_WEIGHT):
         super().__init__()
         self.num_users = num_users
         self.num_items = num_items
         self.n_layers = n_layers
         self.gamma = gamma
         self.dim = dim
+        self.reg_weight = reg_weight
         
         # Embedding table for all nodes (users + items)
         self.embedding = nn.Embedding(num_users + num_items, dim)
@@ -80,7 +81,7 @@ class LightGCN(nn.Module):
         item_emb = out[self.num_users:]
         return user_emb, item_emb
     
-    def bpr_loss(self, user_emb, item_emb, users, pos_items, neg_items, reg_weight=REG_WEIGHT):
+    def bpr_loss(self, user_emb, item_emb, users, pos_items, neg_items):
         u = user_emb[users]
         pos = item_emb[pos_items]
         neg = item_emb[neg_items]
@@ -92,4 +93,4 @@ class LightGCN(nn.Module):
         
         # L2 regularisation on embeddings
         reg_loss = (u.norm(2).pow(2) + pos.norm(2).pow(2) + neg.norm(2).pow(2)) / len(users)
-        return loss + reg_weight * reg_loss
+        return loss + self.reg_weight * reg_loss
