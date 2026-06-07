@@ -41,3 +41,4 @@ class DataProcessor:
         self.df["sequence"] = self.df[text_fields].fillna('').agg(' '.join, axis=1) #type: ignore
         return self.df
 
+

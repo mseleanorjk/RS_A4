@@ -1,7 +1,8 @@
 from collections import defaultdict
 import pickle
 import os
-from torch_geometric.loader import NeighborLoader
+from sklearn.decomposition import TruncatedSVD
+from sklearn.preprocessing import normalize
 import torch
 import random
 import numpy as np
@@ -19,70 +20,62 @@ def reconstruction_loss(x_pred, x_true):
     return ((x_pred - x_true)**2).mean(axis=-1)
 
 def get_item_embeddings(metadata=None):
-    if os.path.exists(os.path.join("embeddings", "tf_idf_embeddings.npz")):
-        print(f'Loading cached embeddings from {os.path.join("embeddings", "tf_idf_embeddings.npz")}')
-        cached = np.load(os.path.join("embeddings", "tf_idf_embeddings.npz"), allow_pickle=True)
+    if os.path.exists(os.path.join("embeddings", "tf_idf_svd_embeddings.npz")):
+        print(f'Loading cached embeddings from {os.path.join("embeddings", "tf_idf_svd_embeddings.npz")}')
+        cached = np.load(os.path.join("embeddings", "tf_idf_svd_embeddings.npz"), allow_pickle=True)
         item_ids = cached['item_ids']
         embeddings = cached['embeddings'].astype(np.float32)
         print(f'Loaded {embeddings.shape[0]:,} embeddings of dim {embeddings.shape[1]}')
     else:
+        print("No cached embeddings found. Computing TF-IDF SVD embeddings...")
         item_ids = metadata['item_id'].tolist() #type: ignore
         sequences = metadata['sequence'].tolist() #type: ignore
         tfidf = TfidfVectorizer(
             max_features=4096, # much richer vocabulary
             stop_words='english',
-            sublinear_tf=True, # log-scale TF, helps with long descriptions
-            min_df=2, # ignore terms appearing in only 1 item (likely noise)
-            max_df=0.95, # ignore terms appearing in 95%+ of items (too generic)
+            sublinear_tf=True,
+            min_df=5,             # ← word must appear in at least 5 items (was 2)
+            max_df=0.85,          # ← ignore very common words
+            ngram_range=(1, 2),   # ← include bigrams like "stainless steel"
         )
-        embeddings = tfidf.fit_transform(sequences).toarray() #type:ignore
-        embeddings = embeddings.astype(np.float32)
-        print("Obtained TF-IDF embeddings with:")
+        tfidf_matrix = tfidf.fit_transform(sequences)
+        svd = TruncatedSVD(n_components=256, random_state=42)
+        embeddings = svd.fit_transform(tfidf_matrix)   # dense [N, 256]
+        print(f"Explained variance ratio: {svd.explained_variance_ratio_.sum():.2%}")
+        embeddings = normalize(embeddings).astype(np.float32)
+        print("Obtained SVD'd TF-IDF embeddings with:")
         print(f"Shape: {embeddings.shape}")
         print(f"Sparsity: {(embeddings == 0).mean():.2%}")  
-        np.savez_compressed(os.path.join("embeddings", "tf_idf_embeddings.npz"), item_ids=item_ids, embeddings=embeddings)
+        np.savez_compressed(os.path.join("embeddings", "tf_idf_svd_embeddings.npz"), item_ids=item_ids, embeddings=embeddings)
     return item_ids, embeddings
 
-def build_graph(data, item_ids, k=K, w=W):
+def build_graph(data):
     """
-    Build graph edges using user sequences. Each node (item) is connected to the 
-    top k items that are most bought with it within a window of w items in the user sequences. 
-    This captures co-purchase patterns.
+    Build graph edges using user sequences. Each user is connected with the 
+    items they have interacted with in the training data. This creates a bipartite graph between users and items.
 
     Args:
         data (pd.DataFrame): The user-item interaction data.
-        item_ids (list): The list of item IDs.
-        k (int, optional): The number of nearest neighbors to consider. Defaults to 10.
-        w (int, optional): The window size for co-occurrence. Defaults to 10.
     Returns:
         torch.Tensor: The edge index tensor representing the copurchase graph.
     """
-    item_to_idx = {item: idx for idx, item in enumerate(item_ids)}
+    # Remap IDs to contiguous indices
+    unique_users = data['user_id'].unique()
+    unique_items = data['item_id'].unique()
     
-    co_counts = defaultdict(int)
-    for _, group in data.groupby('user_id')['item_id']:
-        items = group.tolist()
-        for i, item_i in enumerate(items):
-            for j in range(i+1, min(i+w, len(items))):
-                a = item_to_idx.get(item_i)
-                b = item_to_idx.get(items[j])
-                if a is not None and b is not None:
-                    co_counts[(a, b)] += 1
-                    co_counts[(b, a)] += 1
+    user_to_idx = {uid: idx for idx, uid in enumerate(unique_users)}
+    item_to_idx = {iid: idx + len(unique_users) for idx, iid in enumerate(unique_items)}
     
-    neighbours = defaultdict(list)
-    for (a, b), count in co_counts.items():
-        neighbours[a].append((b, count))
+    user_idx = data['user_id'].map(user_to_idx).values
+    item_idx = data['item_id'].map(item_to_idx).values
     
-    src, dst = [], []
-    for item, nbrs in neighbours.items():
-        top_k = sorted(nbrs, key=lambda x: -x[1])[:k]
-        for nbr, _ in top_k:
-            src.append(item)
-            dst.append(nbr)
+    # Bipartite edges in both directions (user→item and item→user)
+    src = np.concatenate([user_idx, item_idx])
+    dst = np.concatenate([item_idx, user_idx])
     
-    edge_index = torch.tensor([src, dst], dtype=torch.long)
-    return edge_index
+    edge_index = torch.tensor(np.stack([src, dst]), dtype=torch.long)
+    
+    return edge_index, user_to_idx, item_to_idx
 
 def build_disambiguation(item_semantic_ids):
     """
