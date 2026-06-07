@@ -81,8 +81,6 @@ def rqgat_epoch(model, optimizer, train_loader, val_loader, scheduler=None, plot
         utilisation
     )
 
-EPOCHS=50
-
 def train_rqgat_model(model, optimizer, train_loader, val_loader, epochs=EPOCHS, entropy_weight = ENTROPY_WEIGHT, early_stop=None, scheduler=None, verbose=True, save_checkpoints=True):
     final_epoch = epochs
     best_val_loss = float('inf')

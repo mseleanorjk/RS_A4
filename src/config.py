@@ -1,6 +1,7 @@
 import torch
 
 MAX_HISTORY = 20
+EPOCHS=100
 
 NUM_CODEBOOKS = 6
 CENTROIDS = 2
