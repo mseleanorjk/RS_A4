@@ -40,5 +40,11 @@ class DataProcessor:
                    "description", "categories", "price_label"]
         self.df["sequence"] = self.df[text_fields].fillna('').agg(' '.join, axis=1) #type: ignore
         return self.df
-
-
+    
+    def split_data(self):
+        # Last interaction per user → val
+        val = self.df.groupby('user_id').last().reset_index()
+        # Everything else → train
+        train = self.df.groupby('user_id').apply(lambda x: x.iloc[:-1]).reset_index(drop=True)
+        
+        return train, val
