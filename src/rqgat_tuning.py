@@ -67,7 +67,8 @@ print("Adding data and building edges...")
 metadata = DataProcessor("item_meta.csv").add_sequence()
 item_ids, embeddings = get_item_embeddings(metadata)
 train = DataProcessor("train.csv").df
-edge_index = build_graph(train, item_ids).to(device)
+edge_index, user_to_idx, item_to_idx = build_graph(train)
+edge_index = edge_index.to(device)
 
 print("Starting Optuna trials...")
 study.optimize(objective, n_trials=50, n_jobs=1)
