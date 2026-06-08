@@ -29,7 +29,7 @@ def objective(trial):
     #rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device) # initialise the codebooks with kmeans before training
     optimizer = torch.optim.AdamW(lightgcn.parameters(), lr=learning_rate, weight_decay=weight_decay)
     
-    train_losses, _, metrics = train_lightgcn_model(
+    train_losses, _, _ = train_lightgcn_model(
         lightgcn,
         optimizer,
         train_loader,
@@ -38,23 +38,26 @@ def objective(trial):
         val,
         user_to_idx,
         item_to_idx,
-        verbose=False
+        epochs=20,
+        verbose=False,
+        eval=False
     )
-    recall10s, ndcg10s, recall5s, ndcg5s = metrics
+    recall_10, ndcg10 = evaluate(lightgcn, edge_index, val, user_to_idx, item_to_idx, train, k=10)
+    recall_5, ndcg5 = evaluate(lightgcn, edge_index, val, user_to_idx, item_to_idx, train, k=5)
     
     trial.set_user_attr("train_loss", sum(train_losses[:-5])/len(train_losses[:-5]))
-    trial.set_user_attr("ndcg10", sum(ndcg10s[:-5])/len(ndcg10s[:-5]))
-    trial.set_user_attr("ndcg10", sum(ndcg5s[:-5])/len(ndcg5s[:-5]))
-    trial.set_user_attr("recall5", sum(recall5s[:-5])/len(recall5s[:-5]))
-    obj = sum(recall10s[:-5])/len(recall10s[:-5])
+    trial.set_user_attr("ndcg10", ndcg10)
+    trial.set_user_attr("ndcg5", ndcg5)
+    trial.set_user_attr("recall10", recall_10)
+    trial.set_user_attr("recall5", recall_5)
     
-    del lightgcn, train_loader, train_losses, metrics, recall10s, ndcg10s, recall5s, ndcg5s, optimizer
+    del lightgcn, train_loader, train_losses, optimizer
     
-    return obj
+    return recall_10
 
 study = optuna.create_study(
             storage='sqlite:///db.sqlite3',
-            study_name=f"lightgcn_experiment_{time.time()}",
+            study_name=f"lightgcn_experiment_1780905716.7334628",
             direction='maximize',
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=10),
             load_if_exists=True

@@ -13,20 +13,22 @@ from plot_functions import plot_lightgcn_training, plot_metrics
 
 set_seed(42)
 
-def lightgcn_epoch(model, optimizer, train_loader, edge_index, train_df, val_df, user_to_idx, item_to_idx, scheduler=None):
+def lightgcn_epoch(model, optimizer, train_loader, edge_index, train_df, val_df, user_to_idx, item_to_idx, eval = True, scheduler=None):
     # Training
+    edge_index = edge_index.to(device)
     model.train()
-    user_emb, item_emb = model(edge_index)
 
     train_loss = 0
     for user_idx, pos_item_idx, neg_item_idx in train_loader:
         user_idx = user_idx.to(device)
         pos_item_idx = pos_item_idx.to(device)
         neg_item_idx = neg_item_idx.to(device)
+        
+        user_emb, item_emb = model(edge_index)
         loss = model.bpr_loss(user_emb, item_emb, user_idx, pos_item_idx, neg_item_idx)
         
         optimizer.zero_grad()
-        loss.backward(retain_graph=True)  # retain because user_emb/item_emb are reused
+        loss.backward()  # retain because user_emb/item_emb are reused
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
@@ -34,32 +36,42 @@ def lightgcn_epoch(model, optimizer, train_loader, edge_index, train_df, val_df,
 
     train_loss /= len(train_loader)
 
-    recall10, ndcg10 = evaluate(model, edge_index, val_df, user_to_idx, item_to_idx, train_df, k=10)
-    recall5, ndcg5 = evaluate(model, edge_index, val_df, user_to_idx, item_to_idx, train_df, k=5)
+    if eval:
+        recall10, ndcg10 = evaluate(model, edge_index, val_df, user_to_idx, item_to_idx, train_df, k=10)
+        recall5, ndcg5 = evaluate(model, edge_index, val_df, user_to_idx, item_to_idx, train_df, k=5)
+    else :
+        recall10, ndcg10, recall5, ndcg5 = None, None, None, None
 
     if scheduler:
         scheduler.step(recall10)
 
     return train_loss, (recall10, ndcg10, recall5, ndcg5)
 
-def train_lightgcn_model(model, optimizer, train_loader, edge_index, train_df, val_df, user_to_idx, item_to_idx, epochs=EPOCHS, early_stop=None, scheduler=None, verbose=True, save_checkpoints=True):
+def train_lightgcn_model(model, optimizer, train_loader, edge_index, train_df, val_df, user_to_idx, item_to_idx, epochs=EPOCHS, eval=True, early_stop=None, scheduler=None, verbose=True, save_checkpoints=True):
     final_epoch = epochs
     best_recall = float('-inf')
     train_losses, recall10s, ndcg10s, recall5s, ndcg5s = [], [], [], [], []
+    
+    if eval:
+        evaluate = (epoch+1)%5==0
+    else:
+        evaluate = False
+    
     for epoch in range(epochs):
-        train_loss, metrics = lightgcn_epoch(model, optimizer, train_loader, edge_index, train_df, val_df, user_to_idx, item_to_idx, scheduler)
+        train_loss, metrics = lightgcn_epoch(model, optimizer, train_loader, edge_index, train_df, val_df, user_to_idx, item_to_idx, eval=evaluate, scheduler=scheduler)
         recall10, ndcg10, recall5, ndcg5 = metrics
         
         train_losses.append(train_loss)
-        recall10s.append(recall10)
-        ndcg10s.append(ndcg10)
-        recall5s.append(recall5)
-        ndcg5s.append(ndcg5)
+        if recall10 is not None:
+            recall10s.append(recall10)
+            ndcg10s.append(ndcg10)
+            recall5s.append(recall5)
+            ndcg5s.append(ndcg5)
         
         if verbose:
             print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Recall@10: {recall10:.4f}")
 
-        if recall10 > best_recall and save_checkpoints:
+        if recall10 is not None and recall10 > best_recall and save_checkpoints:
             best_recall = recall10
             save_checkpoint(model, optimizer, epoch, recall10, os.path.join("checkpoints", "best_rqgat.pt"))
             if verbose:
@@ -95,7 +107,6 @@ def main():
     
     lightgcn = LightGCN(num_users=train["user_id"].nunique(), num_items=train["item_id"].nunique()).to(device)
     lightgcn.init_item_embeddings(embeddings, item_to_idx, item_ids)
-    #rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device) # initialise the codebooks with kmeans before training
     optimizer = torch.optim.AdamW(lightgcn.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     early_stopping = EarlyStopping(patience=5, delta=0.0001, warmup_epochs=10)
 
