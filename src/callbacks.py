@@ -5,18 +5,20 @@ class EarlyStopping:
         self.patience = patience
         self.delta = delta
         self.warmup_epochs = warmup_epochs
-        self.previous_ncdg10 = float('-inf')
+        self.previous_recall10 = float('-inf')
         self.counter = 0
         self.best_weights = None
 
-    def step(self, ncdg10, epoch):
+    def step(self, recall10, epoch):
         if epoch < self.warmup_epochs:
             return False  # don't stop during warmup
+        if recall10 is None:
+            return False 
 
-        if ncdg10 > self.previous_ncdg10 - self.delta and ncdg10 < self.previous_ncdg10 + self.delta:
+        if recall10 > self.previous_recall10 - self.delta and recall10 < self.previous_recall10 + self.delta:
             self.counter += 1
         else:
-            self.previous_ncdg10 = ncdg10
+            self.previous_recall10 = recall10
 
         return self.counter >= self.patience  # True = stop training
 

@@ -52,12 +52,11 @@ def train_lightgcn_model(model, optimizer, train_loader, edge_index, train_df, v
     best_recall = float('-inf')
     train_losses, recall10s, ndcg10s, recall5s, ndcg5s = [], [], [], [], []
     
-    if eval:
-        evaluate = (epoch+1)%5==0
-    else:
-        evaluate = False
-    
     for epoch in range(epochs):
+        if eval:
+            evaluate = (epoch+1)%5==0
+        else:
+            evaluate = False
         train_loss, metrics = lightgcn_epoch(model, optimizer, train_loader, edge_index, train_df, val_df, user_to_idx, item_to_idx, eval=evaluate, scheduler=scheduler)
         recall10, ndcg10, recall5, ndcg5 = metrics
         
@@ -69,7 +68,10 @@ def train_lightgcn_model(model, optimizer, train_loader, edge_index, train_df, v
             ndcg5s.append(ndcg5)
         
         if verbose:
-            print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Recall@10: {recall10:.4f}")
+            if recall10 is not None:
+                print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}, Recall@10: {recall10:.4f}")
+            else:
+                print(f"Epoch {epoch+1}/{epochs} - Train Loss: {train_loss:.4f}")
 
         if recall10 is not None and recall10 > best_recall and save_checkpoints:
             best_recall = recall10
@@ -77,7 +79,7 @@ def train_lightgcn_model(model, optimizer, train_loader, edge_index, train_df, v
             if verbose:
                 print(f"Checkpoint saved (Recall@10: {recall10:.4f})")
         
-        if early_stop:
+        if recall10 is not None and early_stop:
             should_stop = early_stop.step(recall10, epoch)
             if should_stop:
                 if verbose:
