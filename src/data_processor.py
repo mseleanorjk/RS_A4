@@ -42,9 +42,16 @@ class DataProcessor:
         return self.df
     
     def split_data(self):
-        # Last interaction per user → val
-        val = self.df.groupby('user_id').last().reset_index()
-        # Everything else → train
+        # Drop duplicate user+item+timestamp triplets first
+        self.df = self.df.drop_duplicates(
+            subset=['user_id', 'item_id', 'timestamp']
+        # sort values 
+        ).sort_values(
+            ['user_id', 'timestamp', 'item_id'],
+            kind='mergesort'
+        ).reset_index(drop=True)
+        
+        val = self.df.groupby('user_id').tail(1).reset_index(drop=True)
         train = self.df.groupby('user_id').apply(lambda x: x.iloc[:-1]).reset_index(drop=True)
         
         return train, val
