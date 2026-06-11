@@ -17,6 +17,7 @@ def lightgcn_epoch(model, optimizer, train_loader, edge_index, train_df, val_df,
     # Training
     edge_index = edge_index.to(device)
     model.train()
+    user_emb, item_emb = model(edge_index)
 
     train_loss = 0
     for user_idx, pos_item_idx, neg_item_idx in train_loader:
@@ -24,11 +25,11 @@ def lightgcn_epoch(model, optimizer, train_loader, edge_index, train_df, val_df,
         pos_item_idx = pos_item_idx.to(device)
         neg_item_idx = neg_item_idx.to(device)
         
-        user_emb, item_emb = model(edge_index)
+        #user_emb, item_emb = model(edge_index)
         loss = model.bpr_loss(user_emb, item_emb, user_idx, pos_item_idx, neg_item_idx)
         
         optimizer.zero_grad()
-        loss.backward()  # retain because user_emb/item_emb are reused
+        loss.backward(retain_graph=True)  # retain because user_emb/item_emb are reused
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         
@@ -123,13 +124,21 @@ def main():
         item_to_idx,
         early_stop=early_stopping,
     )
+    
+    recall10s, ndcg10s, recall5s, ndcg5s = metrics
+    np.save("data/train_losses.npy", np.array(train_losses))
+    np.save("data/recall10s.npy", np.array(recall10s))
+    np.save("data/ndcg10s.npy", np.array(ndcg10s))
+    np.save("data/recall5s.npy", np.array(recall5s))
+    np.save("data/ndcg5s.npy", np.array(ndcg5s))
 
     plot_lightgcn_training(
         train_losses,
         final_epoch=final_epoch,
+        save=False
     )
     
-    plot_metrics(metrics)
+    plot_metrics(metrics, save=False)
 
 if __name__ == "__main__":
     main()

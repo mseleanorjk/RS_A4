@@ -16,7 +16,7 @@ def objective(trial):
     layers = trial.suggest_int("layers", 1, 4)
     latent_dim = trial.suggest_categorical("latent_dim", [32, 64, 128])
     batch_size = trial.suggest_categorical("batch_size", [64, 128, 256])
-    reg_weight=trial.suggest_float("reg_weight", 0.1, 1.0)
+    reg_weight=trial.suggest_float("reg_weight", 0.001, 0.1, log=True)
     
     train_loader = DataLoader(
         BPRDataset(train, user_to_idx, item_to_idx),
@@ -57,7 +57,7 @@ def objective(trial):
 
 study = optuna.create_study(
             storage='sqlite:///db.sqlite3',
-            study_name=f"lightgcn_experiment_1780905716.7334628",
+            study_name=f"lightgcn_experiment_{time.time()}",
             direction='maximize',
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=10),
             load_if_exists=True
@@ -69,7 +69,7 @@ edge_index, user_to_idx, item_to_idx = build_graph(train)
 metadata = DataProcessor("item_meta.csv").add_sequence()
 item_ids, embeddings = get_item_embeddings(metadata)
 
-study.optimize(objective, n_trials=50, n_jobs=1)
+study.optimize(objective, n_trials=50, n_jobs=1)#type:ignore
 
 def save_to_csv(study, filename):
     df = study.trials_dataframe()
