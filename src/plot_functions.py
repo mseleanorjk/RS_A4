@@ -124,7 +124,7 @@ def plot_metrics(metrics, save=True):
                             line=dict(color="darkorange")))
     fig.update_yaxes(title_text="Metric value", gridcolor="lightgrey")
     fig.update_xaxes(title_text="Epoch", tickvals=[0,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100])
-    fig.update_layout(title=go.layout.Title(text="Validation metrics for the transformer model",
+    fig.update_layout(title=go.layout.Title(text="Validation metrics for the LightGCN model",
                                             font=go.layout.title.Font(size=20)),
                     plot_bgcolor="white")
     if save:
