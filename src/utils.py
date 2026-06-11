@@ -5,6 +5,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import normalize
 import torch
 import random
+import pandas as pd
 import numpy as np
 from config import *
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -34,9 +35,9 @@ def get_item_embeddings(metadata=None, item_to_idx=None):
             max_features=4096, # much richer vocabulary
             stop_words='english',
             sublinear_tf=True,
-            min_df=5,             # ← word must appear in at least 5 items (was 2)
-            max_df=0.85,          # ← ignore very common words
-            ngram_range=(1, 2),   # ← include bigrams like "stainless steel"
+            min_df=5, #word must appear in at least 5 items
+            max_df=0.85, # ignore very common words
+            ngram_range=(1, 2), # include bigrams like "stainless steel"
         )
         tfidf_matrix = tfidf.fit_transform(sequences)
         svd = TruncatedSVD(n_components=256, random_state=42)
@@ -216,3 +217,41 @@ def evaluate(model, edge_index, val_df, user_to_idx, item_to_idx, train_df, k=10
             ndcgs.append(0.0)
     
     return np.mean(recalls), np.mean(ndcgs)
+
+def generate_submission(model, edge_index, train_df, user_to_idx, item_to_idx, 
+                        sample_submission_path="data/sample_submission.csv",
+                        output_path="data/submission.csv"):
+    model.eval()
+    with torch.no_grad():
+        user_emb, item_emb = model(edge_index.to(device))
+    
+    idx_to_item = {idx: item_id for item_id, idx in item_to_idx.items()}
+    user_train_items = train_df.groupby('user_id')['item_id'].apply(set).to_dict()
+    sample_sub = pd.read_csv(sample_submission_path)
+    
+    rows = []
+    for user_id in sample_sub['user_id'].unique():
+        if user_id not in user_to_idx:
+            # Cold start — no interactions in training, predict most popular items
+            scores = item_emb.norm(dim=-1)  # fallback
+        else:
+            user_idx = user_to_idx[user_id]
+            u = user_emb[user_idx]
+            scores = item_emb @ u
+            for train_item in user_train_items.get(user_id, set()):
+                if train_item in item_to_idx:
+                    scores[item_to_idx[train_item]] = float('-inf')
+        
+        top10_idx = scores.topk(10).indices.tolist()
+        top10_items = [idx_to_item[idx] for idx in top10_idx]
+        
+        rows.append({
+            'ID': user_id,
+            'user_id': user_id,
+            'item_id': ','.join(map(str, top10_items))
+        })
+    
+    submission = pd.DataFrame(rows)
+    submission.to_csv(output_path, index=False)
+    print(f"Submission saved to {output_path} with {len(submission)} users")
+    return submission

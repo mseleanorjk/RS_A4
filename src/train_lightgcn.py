@@ -97,8 +97,9 @@ def main():
     os.makedirs("images", exist_ok=True)
 
     # use new dataset structure to create all nodes t the same time instead of batched
-    data_processor = DataProcessor("train.csv")
-    train, val = data_processor.split_data()
+    train = DataProcessor("train.csv").df
+    val = DataProcessor("test.csv").df
+    # train, val = data_processor.split_data()
     edge_index, user_to_idx, item_to_idx = build_graph(train)
     metadata = DataProcessor("item_meta.csv").add_sequence()
     item_ids, embeddings = get_item_embeddings(metadata)
@@ -108,12 +109,12 @@ def main():
         shuffle=True
     )
     
-    lightgcn = LightGCN(num_users=train["user_id"].nunique(), num_items=train["item_id"].nunique()).to(device)
+    lightgcn = LightGCN(num_users=len(user_to_idx),num_items=len(item_to_idx)).to(device)
     lightgcn.init_item_embeddings(embeddings, item_to_idx, item_ids)
     optimizer = torch.optim.AdamW(lightgcn.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
     early_stopping = EarlyStopping(patience=5, delta=0.0001, warmup_epochs=10)
 
-    train_losses, final_epoch, metrics = train_lightgcn_model(
+    train_losses, _, metrics = train_lightgcn_model(
         lightgcn,
         optimizer,
         train_loader,
@@ -122,8 +123,12 @@ def main():
         val,
         user_to_idx,
         item_to_idx,
+        epochs=200,
+        eval=False,
         early_stop=early_stopping,
     )
+    
+    save_checkpoint(lightgcn, optimizer, epoch=100, val_loss=0.0, path="checkpoints/lightgcn_full.pt")
     
     recall10s, ndcg10s, recall5s, ndcg5s = metrics
     np.save("data/train_losses.npy", np.array(train_losses))
@@ -132,13 +137,13 @@ def main():
     np.save("data/recall5s.npy", np.array(recall5s))
     np.save("data/ndcg5s.npy", np.array(ndcg5s))
 
-    plot_lightgcn_training(
-        train_losses,
-        final_epoch=final_epoch,
-        save=False
-    )
+    # plot_lightgcn_training(
+    #     train_losses,
+    #     final_epoch=final_epoch,
+    #     save=False
+    # )
     
-    plot_metrics(metrics, save=False)
+    # plot_metrics(metrics, save=False)
 
 if __name__ == "__main__":
     main()

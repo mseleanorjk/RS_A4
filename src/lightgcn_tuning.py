@@ -38,7 +38,7 @@ def objective(trial):
         val,
         user_to_idx,
         item_to_idx,
-        epochs=20,
+        epochs=30,
         verbose=False,
         eval=False
     )
@@ -55,16 +55,17 @@ def objective(trial):
     
     return recall_10
 
+save_name = f"tuning/lightgcn_experiment_{time.time()}.csv"
 study = optuna.create_study(
             storage='sqlite:///db.sqlite3',
-            study_name=f"lightgcn_experiment_{time.time()}",
+            study_name=save_name,
             direction='maximize',
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=10),
             load_if_exists=True
         )
 
-data_processor = DataProcessor("train.csv")
-train, val = data_processor.split_data()
+train = DataProcessor("train.csv").df
+val = DataProcessor("test.csv").df
 edge_index, user_to_idx, item_to_idx = build_graph(train)
 metadata = DataProcessor("item_meta.csv").add_sequence()
 item_ids, embeddings = get_item_embeddings(metadata)
@@ -76,5 +77,5 @@ def save_to_csv(study, filename):
     df.to_csv(filename, index=False)
     return df
 
-_ = save_to_csv(study, f"tuning/lightgcn_experiment_{time.time()}.csv")
-print(f"Study results saved in tuning/lightgcn_experiment_{time.time()}.csv")
+_ = save_to_csv(study, save_name)
+print(f"Study results saved in {save_name}")
