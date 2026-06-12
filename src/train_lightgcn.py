@@ -99,7 +99,6 @@ def main():
     # use new dataset structure to create all nodes t the same time instead of batched
     train = DataProcessor("train.csv").df
     val = DataProcessor("test.csv").df
-    # train, val = data_processor.split_data()
     edge_index, user_to_idx, item_to_idx = build_graph(train)
     metadata = DataProcessor("item_meta.csv").add_sequence()
     item_ids, embeddings = get_item_embeddings(metadata)
