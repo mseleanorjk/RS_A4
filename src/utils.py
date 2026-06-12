@@ -1,5 +1,3 @@
-from collections import defaultdict
-import pickle
 import os
 from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import normalize
