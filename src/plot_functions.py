@@ -81,6 +81,57 @@ def plot_rqgat_training(train_losses, val_losses, train_recon_losses, val_recon_
     else:
         fig.show()
 
+def plot_lightgcn_training(train_losses, final_epoch, save=True):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=[x for x in range(final_epoch)],
+                            y=train_losses,
+                            mode="lines",
+                            name="Train loss",
+                            line=dict(color="black")))
+    fig.update_yaxes(title_text="Loss", gridcolor="lightgrey")
+    fig.update_xaxes(title_text="Epoch")
+    
+    fig.update_layout(title=go.layout.Title(text="LightGCN training loss per epoch",
+                                            font=go.layout.title.Font(size=30)),
+                    plot_bgcolor="white", height=700, width=1200, legend=dict(font=dict(size=17)))
+    if save:
+        fig.write_image("images/lightgcn_loss.png")
+    else:
+        fig.show()
+
+def plot_metrics(metrics, save=True):
+    recall10s, ndcg10s, recall5s, ndcg5s = metrics
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=[x for x in range(0,101,5)],
+                            y=ndcg5s,
+                            mode="lines",
+                            name="NCDG@5",
+                            line=dict(color="lightgreen")))
+    fig.add_trace(go.Scatter(x=[x for x in range(0,101,5)],
+                            y=recall5s,
+                            mode="lines",
+                            name="Recall@5",
+                            line=dict(color="gold")))
+    fig.add_trace(go.Scatter(x=[x for x in range(0,101,5)],
+                            y=ndcg10s,
+                            mode="lines",
+                            name="NCDG@10",
+                            line=dict(color="green")))
+    fig.add_trace(go.Scatter(x=[x for x in range(0,101,5)],
+                            y=recall10s,
+                            mode="lines",
+                            name="Recall@10",
+                            line=dict(color="darkorange")))
+    fig.update_yaxes(title_text="Metric value", gridcolor="lightgrey")
+    fig.update_xaxes(title_text="Epoch", tickvals=[0,5,10,15,20,25,30,35,40,45,50,55,60,65,70,75,80,85,90,95,100])
+    fig.update_layout(title=go.layout.Title(text="Validation metrics for the LightGCN model",
+                                            font=go.layout.title.Font(size=20)),
+                    plot_bgcolor="white")
+    if save:
+        fig.write_image("images/lightgcn_metrics.png")
+    else:
+        fig.show()
+
 def plot_kl_divergence(kl, final_epoch=50, save=True):
     fig = go.Figure()
     for i in range(NUM_CODEBOOKS):
