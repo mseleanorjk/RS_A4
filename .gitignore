@@ -222,3 +222,5 @@ images/
 embeddings/
 tuning/
 checkpoints/
+prova*.py
+.DS_store

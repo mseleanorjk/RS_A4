@@ -2,15 +2,14 @@ import optuna
 import torch
 import time
 import numpy as np
-from torch.utils.data import DataLoader
+import gc
 
 from config import *
 from rqgat import RQGAT
 from train_rqgat import train_rqgat_model
+from data_processor import DataProcessor
 from datasets import *
 from utils import *
-
-item_ids, embeddings = get_item_embeddings()
 
 def objective(trial):
     set_seed(42)
@@ -21,39 +20,36 @@ def objective(trial):
     weight_commit = trial.suggest_float("weight", 0.1, 0.9)
     weight_decay_rqgat = trial.suggest_float("weight_decay_rqgat", 1e-4, 1e-2, log=True)
     rqgat_hidden = trial.suggest_categorical("rqgat_hidden", [32, 64, 128])
-    #rqgat_batch_size = trial.suggest_categorical("rqgat_batch_size", [64, 128, 256])
+    batch_size = trial.suggest_categorical("batch_size", [64, 128, 256])
     rqgat_heads = trial.suggest_categorical("rqgat_heads", [1, 2, 4])
     gat_layers = trial.suggest_int("gat_layers", 1, 4)
     rqgat_dropout = trial.suggest_float("rqgat_dropout", 0.1, 0.5)
     entropy_weight = trial.suggest_float("entropy_weight", 0.01, 0.1)
     split_perc = trial.suggest_float("split_perc", 0.7, 0.9)
     
-    rqgat_dataset = RQGATDataset(item_ids, embeddings, split=split_perc, k=10)
-    x, edge_index, train_mask, val_mask = rqgat_dataset.get_full_data()
-    x = x.to(device)
-    edge_index = edge_index.to(device)
-    train_mask = train_mask.to(device)
-    val_mask = val_mask.to(device)
+    data = get_data(embeddings, edge_index, item_ids, split=split_perc)
+    train_loader, val_loader = get_loaders(data, batch_size=batch_size)
     
     rqgat = RQGAT(dim_in=embeddings.shape[1], dim_latent=32, 
-                  num_codebooks=num_codebooks, 
-                  centroids=centroids, 
-                  hidden_size=rqgat_hidden, 
-                  heads=rqgat_heads, 
-                  layers=gat_layers, 
-                  dropout = rqgat_dropout, 
-                  weight_commit=weight_commit)
-    rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device)
+                    num_codebooks=num_codebooks, 
+                    centroids=centroids, 
+                    hidden_size=rqgat_hidden, 
+                    heads=rqgat_heads, 
+                    layers=gat_layers, 
+                    dropout = rqgat_dropout, 
+                    weight_commit=weight_commit).to(device)
+    #rqgat.rvq.initialize_codebooks(x, edge_index, rqgat.encoder, device)
     optimizer = torch.optim.AdamW(rqgat.parameters(), lr=rqgat_lr, weight_decay=weight_decay_rqgat)
     
-    train_losses, val_losses, _, _, _, _, _, _, _, kl = train_rqgat_model(rqgat, optimizer, x, edge_index, train_mask, val_mask, epochs=30, entropy_weight = entropy_weight, early_stop=None, scheduler=None, verbose=False, save_checkpoints=False)
+    train_losses, val_losses, _, _, _, _, _, _, _, kl = train_rqgat_model(rqgat, optimizer, train_loader, val_loader, epochs=30, entropy_weight = entropy_weight, early_stop=None, scheduler=None, verbose=False, save_checkpoints=False)
     avg_last_train_loss = np.mean(train_losses[-5:])
     trial.set_user_attr("avg_last_train_loss", avg_last_train_loss)
     avg_last_val_loss = np.mean(val_losses[-5:])
     for i, kl_values in kl.items():
         trial.set_user_attr(f"kl_{i}", kl_values[-1])
     
-    del rqgat, optimizer, train_losses, val_losses, kl
+    del rqgat, optimizer, train_losses, val_losses, kl, data, train_loader, val_loader
+    gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
@@ -66,7 +62,16 @@ study = optuna.create_study(
             pruner = optuna.pruners.MedianPruner(n_warmup_steps=10),
             load_if_exists=True
         )
-study.optimize(objective, n_trials=50)
+
+print("Adding data and building edges...")
+metadata = DataProcessor("item_meta.csv").add_sequence()
+item_ids, embeddings = get_item_embeddings(metadata)
+train = DataProcessor("train.csv").df
+edge_index, user_to_idx, item_to_idx = build_graph(train)
+edge_index = edge_index.to(device)
+
+print("Starting Optuna trials...")
+study.optimize(objective, n_trials=50, n_jobs=1)
 
 def save_to_csv(study, filename):
     df = study.trials_dataframe()
