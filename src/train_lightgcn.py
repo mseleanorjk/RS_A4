@@ -76,7 +76,7 @@ def train_lightgcn_model(model, optimizer, train_loader, edge_index, train_df, v
 
         if recall10 is not None and recall10 > best_recall and save_checkpoints:
             best_recall = recall10
-            save_checkpoint(model, optimizer, epoch, recall10, os.path.join("checkpoints", "best_rqgat.pt"))
+            save_checkpoint(model, optimizer, epoch, recall10, os.path.join("checkpoints", "best_lightgcn.pt"))
             if verbose:
                 print(f"Checkpoint saved (Recall@10: {recall10:.4f})")
         
@@ -123,12 +123,9 @@ def main():
         val,
         user_to_idx,
         item_to_idx,
-        epochs=200,
-        eval=False,
+        eval=True,
         early_stop=early_stopping,
     )
-    
-    save_checkpoint(lightgcn, optimizer, epoch=100, val_loss=0.0, path="checkpoints/lightgcn_full.pt")
     
     recall10s, ndcg10s, recall5s, ndcg5s = metrics
     np.save("data/train_losses.npy", np.array(train_losses))

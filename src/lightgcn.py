@@ -34,9 +34,7 @@ class LightGCN(nn.Module):
         
         # Embedding table for all nodes (users + items)
         self.embedding = nn.Embedding(num_users + num_items, dim)
-        
-        # Random init for users
-        nn.init.xavier_uniform_(self.embedding.weight[:num_users])
+        nn.init.normal_(self.embedding.weight, std=0.1)
         
         self.convs = nn.ModuleList([LightGCNConv() for _ in range(n_layers)])
     
@@ -89,8 +87,11 @@ class LightGCN(nn.Module):
         pos_scores = (u * pos).sum(dim=-1)
         neg_scores = (u * neg).sum(dim=-1)
         
-        loss = -torch.log(torch.sigmoid(pos_scores - neg_scores) + 1e-10).mean()
+        loss = torch.mean(nn.functional.softplus(neg_scores - pos_scores))
+
+        u0 = self.embedding.weight[users]
+        pos0 = self.embedding.weight[self.num_users + pos_items]
+        neg0 = self.embedding.weight[self.num_users + neg_items]
+        reg_loss = (u0.norm(2).pow(2) + pos0.norm(2).pow(2) + neg0.norm(2).pow(2)) / (2 * len(users))
         
-        # L2 regularisation on embeddings
-        reg_loss = (u.norm(2).pow(2) + pos.norm(2).pow(2) + neg.norm(2).pow(2)) / len(users)
         return loss + self.reg_weight * reg_loss
