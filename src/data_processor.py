@@ -40,18 +40,4 @@ class DataProcessor:
                    "description", "categories", "price_label"]
         self.df["sequence"] = self.df[text_fields].fillna('').agg(' '.join, axis=1) #type: ignore
         return self.df
-    
-    def split_data(self):
-        # Drop duplicate user+item+timestamp triplets first
-        self.df = self.df.drop_duplicates(
-            subset=['user_id', 'item_id', 'timestamp']
-        # sort values 
-        ).sort_values(
-            ['user_id', 'timestamp', 'item_id'],
-            kind='mergesort'
-        ).reset_index(drop=True)
-        
-        val = self.df.groupby('user_id').tail(1).reset_index(drop=True)
-        train = self.df.groupby('user_id').apply(lambda x: x.iloc[:-1]).reset_index(drop=True)
-        
-        return train, val
+
